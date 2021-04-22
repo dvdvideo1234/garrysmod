@@ -4,11 +4,10 @@
 --
 --=============================================================================--
 
-local table 	= table
-local pairs		= pairs
+local table = table
+local pairs = pairs
 
 module( "list" )
-
 
 local g_Lists = {}
 
@@ -33,6 +32,15 @@ function GetForEdit( list )
 end
 
 --
+--	Get all list names
+--
+function GetTable()
+
+	return table.GetKeys( g_Lists )
+
+end
+
+--
 --	Set a key value
 --
 function Set( list, key, value )
@@ -42,14 +50,13 @@ function Set( list, key, value )
 
 end
 
-
 --
---   Add a value to a list
+--	Add a value to a list
 --
 function Add( list, value )
 
 	local list = GetForEdit( list )
-	table.insert( list, value )
+	return table.insert( list, value )
 
 end
 
@@ -70,3 +77,43 @@ function Contains( list, value )
 	return false
 
 end
+
+--
+--	Returns true if the list has an entry
+--
+function HasEntry( list, key )
+
+	if ( !g_Lists[ list ] ) then return false end
+	return g_Lists[ list ][ key ] ~= nil
+
+end
+
+--
+--	Clear a list
+--
+function Clear( list )
+	
+	if ( !g_Lists[ list ] ) then return end
+	table.Empty(g_Lists[ list ])
+
+end
+
+--
+--	Clear a list
+--
+function Remove( list )
+	
+	if ( !g_Lists[ list ] ) then return end
+	g_Lists[ list ] = nil
+
+end
+--
+--	Clear key in a list
+--
+function RemoveKey( list, key )
+	
+	if ( !g_Lists[ list ] ) then return end
+	g_Lists[ list ][ key ] = value
+
+end
+
