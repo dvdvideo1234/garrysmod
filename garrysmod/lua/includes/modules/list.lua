@@ -107,6 +107,7 @@ function Remove( list )
 	g_Lists[ list ] = nil
 
 end
+
 --
 --	Clear key in a list
 --
