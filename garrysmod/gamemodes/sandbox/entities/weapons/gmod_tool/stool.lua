@@ -120,6 +120,7 @@ function ToolObj:Think()		self:ReleaseGhostEntity() end
 function ToolObj:CheckObjects()
 
 	for k, v in pairs( self.Objects ) do
+
 		if( v.Ent ) then
 			if ( !v.Ent:IsWorld() && !v.Ent:IsValid() ) then
 				self:ClearObjects()
@@ -127,6 +128,7 @@ function ToolObj:CheckObjects()
 		else
 			self:ClearObjects()
 		end
+
 	end
 
 end
