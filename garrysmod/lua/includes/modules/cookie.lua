@@ -7,20 +7,26 @@ end
 
 module( "cookie", package.seeall )
 
+--[[
+	key:
+		1 = number expireTime - if the SysTime expired then the cookie is fetched from SQL
+		2 = string cookieValue
+]]
 local CachedEntries = {}
-local BufferedWrites = {}
-local BufferedDeletes = {}
+
+-- key = value (false for delete, else string value for insert)
+local BufferedQueue = {}
 
 local function GetCache( key )
-	if ( BufferedDeletes[ key ] ) then return nil end
+
+	if ( BufferedQueue[ key ] == false ) then return nil end
 
 	local entry = CachedEntries[ key ]
 
 	if ( entry == nil || SysTime() > entry[ 1 ] ) then
-		local name = SQLStr( key )
-		local val = sql.QueryValue( "SELECT value FROM cookies WHERE key = " .. name )
+		local val = sql.QueryValue( "SELECT value FROM cookies WHERE key = " .. SQLStr( key ) )
 
-		if !val then
+		if ( !val ) then
 			return false
 		end
 
@@ -28,46 +34,62 @@ local function GetCache( key )
 	end
 
 	return CachedEntries[ key ][ 2 ]
+
 end
 
 local function FlushCache()
+
 	CachedEntries = {}
-	BufferedWrites = {}
-	BufferedDeletes = {}
+	BufferedQueue = {}
+
 end
 
 local function CommitToSQLite()
+
 	sql.Begin()
 
-	for k, v in pairs( BufferedWrites ) do
-		sql.Query( "INSERT OR REPLACE INTO cookies ( key, value ) VALUES ( " .. SQLStr( k ) .. ", " .. SQLStr( v ) .. " )" )
+	for k, v in pairs( BufferedQueue ) do
+		if ( v == false ) then
+			sql.Query( "DELETE FROM cookies WHERE key = " .. SQLStr( k ) )
+		else
+			sql.Query( "INSERT OR REPLACE INTO cookies ( key, value ) VALUES ( " .. SQLStr( k ) .. ", " .. SQLStr( v ) .. " )" )
+		end
 	end
 
-	for k, v in pairs( BufferedDeletes ) do
-		sql.Query( "DELETE FROM cookies WHERE key = " .. SQLStr( k ) )
-	end
-
-	BufferedWrites = {}
-	BufferedDeletes = {}
+	BufferedQueue = {}
 
 	sql.Commit()
+
 end
 
 local function ScheduleCommit()
+
 	timer.Create( "Cookie_CommitToSQLite", 0.1, 1, CommitToSQLite )
+
 end
 
 local function SetCache( key, value )
+
 	if ( value == nil ) then return Delete( key ) end
 
-	if !CachedEntries[ key ] then
-		CachedEntries[ key ] = { SysTime() + 30, value }
+	local strValue = tostring( value )
+
+	-- It is unlikely that this could ever happen, but with an invalid __tostring method tostring() may silently fail
+	if ( strValue == nil ) then
+		error( "bad argument #2 to 'cookie.Set' (string expected, got " .. type( value ) .. ")", 2 )
 	end
 
-	CachedEntries[ key ][ 2 ] = value
-	BufferedWrites[ key ] = value
+	if CachedEntries[ key ] then
+		CachedEntries[ key ][ 1 ] = SysTime() + 30
+		CachedEntries[ key ][ 2 ] = strValue
+	else
+		CachedEntries[ key ] = { SysTime() + 30, strValue }
+	end
+
+	BufferedQueue[ key ] = strValue
 
 	ScheduleCommit()
+
 end
 
 -- Get a String Value
@@ -94,8 +116,7 @@ end
 function Delete( name )
 
 	CachedEntries[ name ] = nil
-	BufferedWrites[ name ] = nil
-	BufferedDeletes[ name ] = true
+	BufferedQueue[ name ] = false
 
 	ScheduleCommit()
 
@@ -103,8 +124,12 @@ end
 
 -- Set a Value
 function Set( name, value )
+
 	SetCache( name, value )
+
 end
+
+hook.Add( "ShutDown", "SaveCookiesOnShutdown", CommitToSQLite )
 
 if ( !CLIENT_DLL ) then return end
 

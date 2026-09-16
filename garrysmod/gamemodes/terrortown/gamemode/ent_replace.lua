@@ -18,6 +18,8 @@ local function ReplaceSingle(ent, newname)
    ent:SetSolid(SOLID_NONE)
 
    local rent = ents.Create(newname)
+   if not IsValid(rent) then print("Failed to create replacement entity: " .. newname) return end
+
    rent:SetPos(ent:GetPos())
    rent:SetAngles(ent:GetAngles())
    rent:Spawn()
@@ -48,7 +50,7 @@ local hl2_ammo_replace = {
    ["item_healthcharger"] = "item_ammo_revolver_ttt",
    ["item_ammo_crate"] = "weapon_ttt_confgrenade",
    ["item_item_crate"] = "ttt_random_ammo"
-};
+}
 
 -- Replace an ammo entity with the TTT version
 -- Optional cls param is the classname, if the caller already has it handy
@@ -62,7 +64,7 @@ local function ReplaceAmmoSingle(ent, cls)
 end
 
 local function ReplaceAmmo()
-   for _, ent in pairs(ents.FindByClass("item_*")) do
+   for _, ent in ipairs(ents.FindByClass("item_*")) do
       ReplaceAmmoSingle(ent)
    end
 end
@@ -77,7 +79,7 @@ local hl2_weapon_replace = {
    ["weapon_slam"] = "item_ammo_pistol_ttt",
    ["weapon_frag"] = "weapon_zm_revolver",
    ["weapon_crowbar"] = "weapon_zm_molotov"
-};
+}
 
 local function ReplaceWeaponSingle(ent, cls)
    -- Loadout weapons immune
@@ -97,7 +99,7 @@ end
 
 
 local function ReplaceWeapons()
-   for _, ent in pairs(ents.FindByClass("weapon_*")) do
+   for _, ent in ipairs(ents.FindByClass("weapon_*")) do
       ReplaceWeaponSingle(ent)
    end
 end
@@ -106,7 +108,7 @@ end
 -- Remove ZM ragdolls that don't work, AND old player ragdolls.
 -- Exposed because it's also done at BeginRound
 function ents.TTT.RemoveRagdolls(player_only)
-   for k, ent in pairs(ents.FindByClass("prop_ragdoll")) do
+   for k, ent in ipairs(ents.FindByClass("prop_ragdoll")) do
       if IsValid(ent) then
          if not player_only and string.find(ent:GetModel(), "zm_", 6, true) then
             ent:Remove()
@@ -120,7 +122,7 @@ end
 
 -- People spawn with these, so remove any pickups (ZM maps have them)
 local function RemoveCrowbars()
-   for k, ent in pairs(ents.FindByClass("weapon_zm_improvised")) do
+   for k, ent in ipairs(ents.FindByClass("weapon_zm_improvised")) do
       ent:Remove()
    end
 end
@@ -174,7 +176,7 @@ local broken_parenting_ents = {
 
 function ents.TTT.FixParentedPreCleanup()
    for _, rcls in pairs(broken_parenting_ents) do
-      for k,v in pairs(ents.FindByClass(rcls)) do
+      for k,v in ipairs(ents.FindByClass(rcls)) do
          if v.GetParent and IsValid(v:GetParent()) then
             v.CachedParentName = v:GetParent():GetName()
             v:SetParent(nil)
@@ -189,7 +191,7 @@ end
 
 function ents.TTT.FixParentedPostCleanup()
    for _, rcls in pairs(broken_parenting_ents) do
-      for k,v in pairs(ents.FindByClass(rcls)) do
+      for k,v in ipairs(ents.FindByClass(rcls)) do
          if v.CachedParentName then
             if v.OrigPos then
                v:SetPos(v.OrigPos)
@@ -208,7 +210,7 @@ end
 function ents.TTT.TriggerRoundStateOutputs(r, param)
    r = r or GetRoundState()
 
-   for _, ent in pairs(ents.FindByClass("ttt_map_settings")) do
+   for _, ent in ipairs(ents.FindByClass("ttt_map_settings")) do
       if IsValid(ent) then
          ent:RoundStateTrigger(r, param)
       end
@@ -237,10 +239,10 @@ local dummify = {
    "team_control_point_round",
    -- ZM
    "item_ammo_revolver"
-};
+}
 
 for k, cls in pairs(dummify) do
-   scripted_ents.Register({Type="point", IsWeaponDummy=true}, cls, false)
+   scripted_ents.Register({Type="point", IsWeaponDummy=true}, cls)
 end
 
 -- Cache this, every ttt_random_weapon uses it in its Init
@@ -258,6 +260,77 @@ function ents.TTT.GetSpawnableSWEPs()
    end
 
    return SpawnableSWEPs
+end
+
+SPAWNFILTER_SMG = 1
+SPAWNFILTER_AR = 2
+SPAWNFILTER_SNIPER = 4
+SPAWNFILTER_SHOTGUN = 8
+SPAWNFILTER_LMG = 16
+SPAWNFILTER_PISTOL = 32
+SPAWNFILTER_AUTOPISTOL = 64
+SPAWNFILTER_MAGNUM = 128
+SPAWNFILTER_NADE = 256
+
+local ammotype_spawnfilter = {
+   ["smg1"] = SPAWNFILTER_SMG,
+   ["357"] = SPAWNFILTER_SNIPER,
+   ["alyxgun"] = SPAWNFILTER_MAGNUM,
+   ["buckshot"] = SPAWNFILTER_SHOTGUN,
+   ["airboatgun"] = SPAWNFILTER_LMG
+}
+
+function GM:TTTWeaponFilter(wep)
+   local kind = wep.Kind
+   if not kind then return end
+
+   if kind == WEAPON_NADE then
+      return SPAWNFILTER_NADE
+   end
+
+   local ammo = wep.Primary.Ammo
+   if not ammo then return end
+   ammo = ammo:lower()
+
+   if ammo == "pistol" then
+      if kind == WEAPON_HEAVY then
+         return SPAWNFILTER_AR
+      elseif kind == WEAPON_PISTOL then
+         if not wep.Primary.Delay or wep.Primary.Delay > 0.15 or not wep.Primary.Automatic then
+            return SPAWNFILTER_PISTOL
+         else
+            return SPAWNFILTER_AUTOPISTOL
+         end
+      end
+   end
+
+   return ammotype_spawnfilter[ammo]
+end
+
+local SWEPSpawnFlags = nil
+local FilteredSWEPs = {}
+function ents.TTT.GetFilteredSpawnableSWEPs(filter)
+   if not SWEPSpawnFlags then
+      local tbl = {}
+      for _, wep in ipairs(ents.TTT.GetSpawnableSWEPs()) do
+         tbl[wep] = hook.Run("TTTWeaponFilter", wep)
+      end
+
+      SWEPSpawnFlags = tbl
+   end
+
+   if not FilteredSWEPs[filter] then
+      local tbl = {}
+      for wep, spawnflag in pairs(SWEPSpawnFlags) do
+         if util.BitSet(filter, spawnflag) then
+            table.insert(tbl, wep)
+         end
+      end
+
+      FilteredSWEPs[filter] = tbl
+   end
+
+   return FilteredSWEPs[filter]
 end
 
 local SpawnableAmmoClasses = nil
@@ -282,6 +355,8 @@ local function PlaceWeapon(swep, pos, ang)
 
    -- Create the weapon, somewhat in the air in case the spot hugs the ground.
    local ent = ents.Create(cls)
+   if not IsValid(ent) then print("Failed to create weapon entity: " .. cls) return NULL end
+
    pos.z = pos.z + 3
    ent:SetPos(pos)
    ent:SetAngles(VectorRand():Angle())
@@ -305,25 +380,25 @@ local function PlaceWeapon(swep, pos, ang)
    return ent
 end
 
--- Spawns a bunch of guns (scaling with maxplayers count or 
+-- Spawns a bunch of guns (scaling with maxplayers count or
 -- by ttt_weapon_spawn_max cvar) at randomly selected
 -- entities of the classes given the table
 local function PlaceWeaponsAtEnts(spots_classes)
    local spots = {}
    for _, s in pairs(spots_classes) do
-      for _, e in pairs(ents.FindByClass(s)) do
+      for _, e in ipairs(ents.FindByClass(s)) do
          table.insert(spots, e)
       end
    end
 
    local spawnables = ents.TTT.GetSpawnableSWEPs()
-   
+
    local max = GetConVar( "ttt_weapon_spawn_count" ):GetInt()
-   if max == 0 then 
+   if max == 0 then
       max = game.MaxPlayers()
       max = max + math.max(3, 0.33 * max)
    end
-   
+
    local num = 0
    local w = nil
    for k, v in RandomPairs(spots) do
@@ -357,7 +432,7 @@ local function PlaceExtraWeaponsForCSS()
       "info_player_terrorist",
       "info_player_counterterrorist",
       "hostage_entity"
-   };
+   }
 
    PlaceWeaponsAtEnts(spots_classes)
 end
@@ -381,7 +456,7 @@ local function PlaceExtraWeaponsForTF2()
       "item_teamflag",
       "game_intro_viewpoint",
       "info_observer_point"
-   };
+   }
 
    PlaceWeaponsAtEnts(spots_classes)
 end
@@ -393,7 +468,7 @@ function ents.TTT.PlaceExtraWeapons()
    -- single loop should be faster than checking the table size.
 
    -- Get out of here if there exists any weapon at all
-   for k,v in pairs(ents.FindByClass("weapon_*")) do
+   for k,v in ipairs(ents.FindByClass("weapon_*")) do
       -- See if it's the kind of thing we would spawn, to avoid the carry weapon
       -- and such. Owned weapons are leftovers on players that will go away.
       if IsValid(v) and v.AutoSpawnable and not IsValid(v:GetOwner()) then
@@ -402,16 +477,16 @@ function ents.TTT.PlaceExtraWeapons()
    end
 
    -- All current TTT mappers use these, so if we find one we're good
-   for k,v in pairs(ents.FindByClass("info_player_deathmatch")) do return end
+   for k,v in ipairs(ents.FindByClass("info_player_deathmatch")) do return end
 
    -- CT spawns on the other hand are unlikely to be seen outside CS:S maps
-   for k,v in pairs(ents.FindByClass("info_player_counterterrorist")) do
+   for k,v in ipairs(ents.FindByClass("info_player_counterterrorist")) do
       PlaceExtraWeaponsForCSS()
       return
    end
 
    -- And same for TF2 team spawns
-   for k,v in pairs(ents.FindByClass("info_player_teamspawn")) do
+   for k,v in ipairs(ents.FindByClass("info_player_teamspawn")) do
       PlaceExtraWeaponsForTF2()
       return
    end
@@ -423,13 +498,13 @@ local function RemoveReplaceables()
    -- This could be transformed into lots of FindByClass searches, one for every
    -- key in the replace tables. Hopefully this is faster as more of the work is
    -- done on the C side. Hard to measure.
-   for _, ent in pairs(ents.FindByClass("item_*")) do
+   for _, ent in ipairs(ents.FindByClass("item_*")) do
       if hl2_ammo_replace[ent:GetClass()] then
          ent:Remove()
       end
    end
 
-   for _, ent in pairs(ents.FindByClass("weapon_*")) do
+   for _, ent in ipairs(ents.FindByClass("weapon_*")) do
       if hl2_weapon_replace[ent:GetClass()] then
          ent:Remove()
       end
@@ -440,14 +515,14 @@ local function RemoveWeaponEntities()
    RemoveReplaceables()
 
    for _, cls in pairs(ents.TTT.GetSpawnableAmmo()) do
-      for k, ent in pairs(ents.FindByClass(cls)) do
+      for k, ent in ipairs(ents.FindByClass(cls)) do
          ent:Remove()
       end
    end
 
    for _, sw in pairs(ents.TTT.GetSpawnableSWEPs()) do
       local cn = WEPS.GetClass(sw)
-      for k, ent in pairs(ents.FindByClass(cn)) do
+      for k, ent in ipairs(ents.FindByClass(cn)) do
          ent:Remove()
       end
    end
@@ -487,14 +562,21 @@ function ents.TTT.CanImportEntities(map)
    if not GetConVar("ttt_use_weapon_spawn_scripts"):GetBool() then return false end
 
    local fname = "maps/" .. map .. "_ttt.txt"
+   if file.Exists(fname, "GAME") then
+      return fname
+   end
 
-   return file.Exists(fname, "GAME")
+   -- Allows workshop addons to pack rearm scripts
+   fname = "data_static/" .. map .. "_ttt.txt"
+   if file.Exists(fname, "GAME") then
+      return fname
+   end
 end
 
 local function ImportSettings(map)
-   if not ents.TTT.CanImportEntities(map) then return end
+   local fname = ents.TTT.CanImportEntities(map)
+   if not fname then return end
 
-   local fname = "maps/" .. map .. "_ttt.txt"
    local buf = file.Read(fname, "GAME")
 
    local settings = {}
@@ -518,17 +600,14 @@ end
 
 local classremap = {
    ttt_playerspawn = "info_player_deathmatch"
-};
+}
 
 local function ImportEntities(map)
-   if not ents.TTT.CanImportEntities(map) then return end
+   local fname = ents.TTT.CanImportEntities(map)
+   if not fname then return end
 
-   local fname = "maps/" .. map .. "_ttt.txt"
-
-   local buf = file.Read(fname, "GAME")
-   local lines = string.Explode("\n", buf)
    local num = 0
-   for k, line in ipairs(lines) do
+   for k, line in ipairs(string.Explode("\n", file.Read(fname, "GAME"))) do
       if (not string.match(line, "^#")) and (not string.match(line, "^setting")) and line != "" and string.byte(line) != 0 then
          local data = string.Explode("\t", line)
 

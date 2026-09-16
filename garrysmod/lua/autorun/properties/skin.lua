@@ -34,10 +34,11 @@ properties.Add( "skin", {
 
 		for i = 0, num - 1 do
 
-			local option = submenu:AddOption( "Skin " .. i, function() self:SetSkin( ent, i ) end )
-			if ( target:GetSkin() == i ) then
-				option:SetChecked( true )
-			end
+			local opt = submenu:AddOption( language.FormatPhrase( "skinX", i ) )
+			opt:SetRadio( true )
+			opt:SetChecked( target:GetSkin() == i )
+			opt:SetIsCheckable( true )
+			opt.OnChecked = function( s, checked ) if ( checked ) then self:SetSkin( ent, i ) end end
 
 		end
 
@@ -58,12 +59,13 @@ properties.Add( "skin", {
 
 	end,
 
-	Receive = function( self, length, player )
+	Receive = function( self, length, ply )
 
 		local ent = net.ReadEntity()
 		local skinid = net.ReadUInt( 8 )
 
-		if ( !self:Filter( ent, player ) ) then return end
+		if ( !properties.CanBeTargeted( ent, ply ) ) then return end
+		if ( !self:Filter( ent, ply ) ) then return end
 
 		ent = IsValid( ent.AttachedEntity ) and ent.AttachedEntity or ent
 		ent:SetSkin( skinid )

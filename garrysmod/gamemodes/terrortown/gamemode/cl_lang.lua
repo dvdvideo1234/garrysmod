@@ -7,8 +7,9 @@
 -- strings for "#identifiers" after all.
 
 LANG.Strings = {}
+LANG.Codes = {}
 
-CreateConVar("ttt_language", "auto", FCVAR_ARCHIVE)
+local ttt_language = CreateConVar("ttt_language", "auto", FCVAR_ARCHIVE)
 
 LANG.DefaultLanguage = "english"
 LANG.ActiveLanguage  = LANG.DefaultLanguage
@@ -17,13 +18,22 @@ LANG.ServerLanguage  = "english"
 
 local cached_default, cached_active
 
-function LANG.CreateLanguage(lang_name)
-   if not lang_name then return end
-   lang_name = string.lower(lang_name)
+function LANG.CreateLanguage(raw_lang_name, lang_code)
+   if not raw_lang_name then return end
+   local lang_name = string.lower(raw_lang_name)
+
+   if lang_code then
+      lang_code = string.lower(lang_code)
+      LANG.Codes[lang_code] = lang_name
+   end
 
    if not LANG.IsLanguage(lang_name) then
-      -- Empty string is very convenient to have, so init with that.
-      LANG.Strings[lang_name] = { [""] = "" }
+      LANG.Strings[lang_name] = {
+         -- Empty string is very convenient to have, so init with that.
+         [""] = "",
+         -- Presentational, not-lowercased language name
+         language_name = raw_lang_name
+      }
    end
 
    if lang_name == LANG.DefaultLanguage then
@@ -42,13 +52,25 @@ function LANG.CreateLanguage(lang_name)
    return LANG.Strings[lang_name]
 end
 
+function LANG.GetLanguageName(lang_name)
+   if not lang_name then return end
+   lang_name = string.lower(lang_name)
+
+   if LANG.Codes[lang_name] then
+      lang_name = LANG.Codes[lang_name]
+   end
+
+   return lang_name
+end
+
 -- Add a string to a language. Should not be used in a language file, only for
 -- adding strings elsewhere, such as a SWEP script.
 function LANG.AddToLanguage(lang_name, string_name, string_text)
-   lang_name = lang_name and string.lower(lang_name)
+   lang_name = LANG.GetLanguageName(lang_name)
 
    if not LANG.IsLanguage(lang_name) then
       ErrorNoHalt(Format("Failed to add '%s' to language '%s': language does not exist.\n", tostring(string_name), tostring(lang_name)))
+      return false
    end
 
    LANG.Strings[lang_name][string_name] = string_text
@@ -95,16 +117,6 @@ function LANG.GetUnsafeLanguageTable() return cached_active end
 
 function LANG.GetUnsafeNamed(name) return LANG.Strings[name] end
 
--- Safe and slow access, not sure if it's ever useful.
-function LANG.GetLanguageTable(lang_name)
-   lang_name = lang_name or LANG.ActiveLanguage
-
-   local cpy = table.Copy(LANG.Strings[lang_name])
-   SetFallback(cpy)
-
-   return cpy
-end
-
 
 local function SetFallback(tbl)
    -- languages may deal with this themselves, or may already have the fallback
@@ -123,8 +135,18 @@ local function SetFallback(tbl)
 
 end
 
+-- Safe and slow access, not sure if it's ever useful.
+function LANG.GetLanguageTable(lang_name)
+   lang_name = lang_name or LANG.ActiveLanguage
+
+   local cpy = table.Copy(LANG.Strings[lang_name])
+   SetFallback(cpy)
+
+   return cpy
+end
+
 function LANG.SetActiveLanguage(lang_name)
-   lang_name = lang_name and string.lower(lang_name)
+   lang_name = LANG.GetLanguageName(lang_name)
 
    if LANG.IsLanguage(lang_name) then
       local old_name = LANG.ActiveLanguage
@@ -150,13 +172,16 @@ function LANG.SetActiveLanguage(lang_name)
    end
 end
 
+local gmod_language = GetConVar("gmod_language")
 function LANG.Init()
-   local lang_name = GetConVarString("ttt_language")
+   local lang_name = ttt_language:GetString()
 
    -- if we want to use the server language, we'll be switching to it as soon as
    -- we hear from the server which one it is, for now use default
    if LANG.IsServerDefault(lang_name) then
       lang_name = LANG.ServerLanguage
+   elseif LANG.IsAuto(lang_name) then
+      lang_name = gmod_language:GetString()
    end
 
    LANG.SetActiveLanguage(lang_name)
@@ -164,7 +189,12 @@ end
 
 function LANG.IsServerDefault(lang_name)
    lang_name = string.lower(lang_name)
-   return lang_name == "server default" or lang_name == "auto"
+   return lang_name == "server default"
+end
+
+function LANG.IsAuto(lang_name)
+   lang_name = string.lower(lang_name)
+   return lang_name == "auto"
 end
 
 function LANG.IsLanguage(lang_name)
@@ -173,14 +203,15 @@ function LANG.IsLanguage(lang_name)
 end
 
 local function LanguageChanged(cv, old, new)
-   if new and new != LANG.ActiveLanguage then
+   if not new or new == LANG.ActiveLanguage then return end
 
-      if LANG.IsServerDefault(new) then
-         new = LANG.ServerLanguage
-      end
-
-      LANG.SetActiveLanguage(new)
+   if LANG.IsServerDefault(new) then
+      new = LANG.ServerLanguage
+   elseif LANG.IsAuto(new) then
+      new = gmod_language:GetString()
    end
+
+   LANG.SetActiveLanguage(new)
 end
 cvars.AddChangeCallback("ttt_language", LanguageChanged)
 
@@ -188,6 +219,13 @@ local function ForceReload()
    LANG.SetActiveLanguage("english")
 end
 concommand.Add("ttt_reloadlang", ForceReload)
+
+local function GMLanguageChanged(cv, old, new)
+   if new and LANG.IsAuto(ttt_language:GetString()) then
+      LANG.SetActiveLanguage(new)
+   end
+end
+cvars.AddChangeCallback("gmod_language", GMLanguageChanged)
 
 -- Get a copy of all available languages (keys in the Strings tbl)
 function LANG.GetLanguages()
@@ -198,13 +236,22 @@ function LANG.GetLanguages()
    return langs
 end
 
+function LANG.GetLanguageNames()
+   -- Typically preferable to GetLanguages but separate to avoid API breakage.
+   local lang_names = {}
+   for lang, strings in pairs(LANG.Strings) do
+      lang_names[lang] = strings["language_name"] or string.Capitalize(lang)
+   end
+   return lang_names
+end
+
 ---- Styling
 
 local bgcolor = {
    [ROLE_TRAITOR]   = Color(150, 0, 0, 200),
    [ROLE_DETECTIVE] = Color(0, 0, 150, 200),
    [ROLE_INNOCENT]  = Color(0, 50,  0, 200)
-};
+}
 
 -- Table of styles that can take a string and display it in some position,
 -- colour, etc.
@@ -226,7 +273,7 @@ LANG.Styles = {
 
 
    chat_plain = chat.AddText
-};
+}
 
 -- Table mapping message name => message style name. If no message style is
 -- defined, the default style is used. This is the case for the vast majority of
@@ -240,7 +287,7 @@ end
 
 -- Set a style by name or directly as style-function
 function LANG.SetStyle(name, style)
-   if type(style) == "string" then
+   if isstring(style) then
       style = LANG.Styles[style]
    end
 
@@ -259,17 +306,17 @@ function LANG.ProcessMsg(name, params)
    if params then
       -- some of our params may be string names themselves
       for k, v in pairs(params) do
-         if type(v) == "string" then
+         if isstring(v) then
             local name = LANG.GetNameParam(v)
             if not name then continue end
 
             params[k] = LANG.GetTranslation(name)
          end
       end
-      
+
       text = interp(raw, params)
    end
-   
+
    LANG.ShowStyledMsg(text, LANG.GetStyle(name))
 end
 
@@ -293,7 +340,7 @@ local styledmessages = {
       "buy_no_stock",
       "buy_pending",
       "buy_received",
-      
+
       "xfer_no_recip",
       "xfer_no_credits",
       "xfer_success",
@@ -323,7 +370,11 @@ local styledmessages = {
    chat_plain = {
       "body_call",
       "disg_turned_on",
-      "disg_turned_off"
+      "disg_turned_off",
+      "mute_all",
+      "mute_off",
+      "mute_specs",
+      "mute_living"
    },
 
    chat_warn = {
@@ -340,11 +391,11 @@ local styledmessages = {
 
       "drop_no_ammo"
    }
-};
+}
 
 local set_style = LANG.SetStyle
 for style, msgs in pairs(styledmessages) do
-   for _, name in pairs(msgs) do
+   for _, name in ipairs(msgs) do
       set_style(name, style)
    end
 end

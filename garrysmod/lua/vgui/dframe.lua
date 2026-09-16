@@ -8,10 +8,10 @@ AccessorFunc( PANEL, "m_bScreenLock",		"ScreenLock",		FORCE_BOOL )
 AccessorFunc( PANEL, "m_bDeleteOnClose",	"DeleteOnClose",	FORCE_BOOL )
 AccessorFunc( PANEL, "m_bPaintShadow",		"PaintShadow",		FORCE_BOOL )
 
-AccessorFunc( PANEL, "m_iMinWidth", "MinWidth" )
-AccessorFunc( PANEL, "m_iMinHeight", "MinHeight" )
+AccessorFunc( PANEL, "m_iMinWidth",			"MinWidth",			FORCE_NUMBER )
+AccessorFunc( PANEL, "m_iMinHeight",		"MinHeight",		FORCE_NUMBER )
 
-AccessorFunc( PANEL, "m_bBackgroundBlur", "BackgroundBlur", FORCE_BOOL )
+AccessorFunc( PANEL, "m_bBackgroundBlur",	"BackgroundBlur",	FORCE_BOOL )
 
 function PANEL:Init()
 
@@ -30,13 +30,13 @@ function PANEL:Init()
 	self.btnMaxim:SetText( "" )
 	self.btnMaxim.DoClick = function ( button ) self:Close() end
 	self.btnMaxim.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "WindowMaximizeButton", panel, w, h ) end
-	self.btnMaxim:SetDisabled( true )
+	self.btnMaxim:SetEnabled( false )
 
 	self.btnMinim = vgui.Create( "DButton", self )
 	self.btnMinim:SetText( "" )
 	self.btnMinim.DoClick = function ( button ) self:Close() end
 	self.btnMinim.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "WindowMinimizeButton", panel, w, h ) end
-	self.btnMinim:SetDisabled( true )
+	self.btnMinim:SetEnabled( false )
 
 	self.lblTitle = vgui.Create( "DLabel", self )
 	self.lblTitle.UpdateColours = function( label, skin )
@@ -171,14 +171,16 @@ function PANEL:Think()
 
 	end
 
-	if ( self.Hovered && self.m_bSizable && mousex > ( self.x + self:GetWide() - 20 ) && mousey > ( self.y + self:GetTall() - 20 ) ) then
+	local screenX, screenY = self:LocalToScreen( 0, 0 )
+
+	if ( self.Hovered && self.m_bSizable && mousex > ( screenX + self:GetWide() - 20 ) && mousey > ( screenY + self:GetTall() - 20 ) ) then
 
 		self:SetCursor( "sizenwse" )
 		return
 
 	end
 
-	if ( self.Hovered && self:GetDraggable() && mousey < ( self.y + 24 ) ) then
+	if ( self.Hovered && self:GetDraggable() && mousey < ( screenY + 24 ) ) then
 		self:SetCursor( "sizeall" )
 		return
 	end
@@ -205,13 +207,15 @@ end
 
 function PANEL:OnMousePressed()
 
-	if ( self.m_bSizable && gui.MouseX() > ( self.x + self:GetWide() - 20 ) && gui.MouseY() > ( self.y + self:GetTall() - 20 ) ) then
+	local screenX, screenY = self:LocalToScreen( 0, 0 )
+
+	if ( self.m_bSizable && gui.MouseX() > ( screenX + self:GetWide() - 20 ) && gui.MouseY() > ( screenY + self:GetTall() - 20 ) ) then
 		self.Sizing = { gui.MouseX() - self:GetWide(), gui.MouseY() - self:GetTall() }
 		self:MouseCapture( true )
 		return
 	end
 
-	if ( self:GetDraggable() && gui.MouseY() < (self.y + 24) ) then
+	if ( self:GetDraggable() && gui.MouseY() < ( screenY + 24 ) ) then
 		self.Dragging = { gui.MouseX() - self.x, gui.MouseY() - self.y }
 		self:MouseCapture( true )
 		return
@@ -227,7 +231,7 @@ function PANEL:OnMouseReleased()
 
 end
 
-function PANEL:PerformLayout()
+function PANEL:PerformLayout( w, h )
 
 	local titlePush = 0
 
@@ -239,17 +243,17 @@ function PANEL:PerformLayout()
 
 	end
 
-	self.btnClose:SetPos( self:GetWide() - 31 - 4, 0 )
-	self.btnClose:SetSize( 31, 31 )
+	self.btnClose:SetPos( w - 31 - 4, 0 )
+	self.btnClose:SetSize( 31, 24 )
 
-	self.btnMaxim:SetPos( self:GetWide() - 31 * 2 - 4, 0 )
-	self.btnMaxim:SetSize( 31, 31 )
+	self.btnMaxim:SetPos( w - 31 * 2 - 4, 0 )
+	self.btnMaxim:SetSize( 31, 24 )
 
-	self.btnMinim:SetPos( self:GetWide() - 31 * 3 - 4, 0 )
-	self.btnMinim:SetSize( 31, 31 )
+	self.btnMinim:SetPos( w - 31 * 3 - 4, 0 )
+	self.btnMinim:SetSize( 31, 24 )
 
 	self.lblTitle:SetPos( 8 + titlePush, 2 )
-	self.lblTitle:SetSize( self:GetWide() - 25 - titlePush, 20 )
+	self.lblTitle:SetSize( w - 25 - titlePush, 20 )
 
 end
 

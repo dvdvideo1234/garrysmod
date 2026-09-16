@@ -52,13 +52,13 @@ function plymeta:SubtractCredits(amt) self:AddCredits(-amt) end
 
 function plymeta:SetDefaultCredits()
    if self:GetTraitor() then
-      local c = GetConVarNumber("ttt_credits_starting")
+      local c = GetConVar("ttt_credits_starting"):GetInt()
       if CountTraitors() == 1 then
-         c = c + GetConVarNumber("ttt_credits_alonebonus")
+         c = c + GetConVar("ttt_credits_alonebonus"):GetInt()
       end
-      self:SetCredits(math.ceil(c))
+      self:SetCredits(c)
    elseif self:GetDetective() then
-      self:SetCredits(math.ceil(GetConVarNumber("ttt_det_credits_starting")))
+      self:SetCredits(GetConVar("ttt_det_credits_starting"):GetInt())
    else
       self:SetCredits(0)
    end
@@ -82,7 +82,7 @@ end
 -- We do this instead of an NW var in order to limit the info to just this ply
 function plymeta:SendEquipment()
    net.Start("TTT_Equipment")
-      net.WriteUInt(self.equipment_items, 16)
+      net.WriteInt(self.equipment_items, util.BitsRequired(EQUIP_MAX, true))
    net.Send(self)
 end
 
@@ -200,7 +200,7 @@ function plymeta:RecordKill(victim)
       self.kills = {}
    end
 
-   table.insert(self.kills, victim:SteamID())
+   table.insert(self.kills, victim:SteamID64())
 end
 
 

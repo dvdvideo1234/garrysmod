@@ -12,7 +12,7 @@ if CLIENT then
    SWEP.EquipMenuData = {
       type = "item_weapon",
       desc = "defuser_desc"
-   };
+   }
 
    SWEP.Icon                 = "vgui/ttt/icon_defuser"
 end
@@ -44,16 +44,16 @@ local defuse = Sound("c4.disarmfinish")
 function SWEP:PrimaryAttack()
    self:SetNextPrimaryFire( CurTime() + self.Primary.Delay )
 
-   local spos = self.Owner:GetShootPos()
-   local sdest = spos + (self.Owner:GetAimVector() * 80)
+   local spos = self:GetOwner():GetShootPos()
+   local sdest = spos + (self:GetOwner():GetAimVector() * 80)
 
-   local tr = util.TraceLine({start=spos, endpos=sdest, filter=self.Owner, mask=MASK_SHOT})
+   local tr = util.TraceLine({start=spos, endpos=sdest, filter=self:GetOwner(), mask=MASK_SHOT})
 
    if IsValid(tr.Entity) and tr.Entity.Defusable then
       local bomb = tr.Entity
       if bomb.Defusable==true or bomb:Defusable() then
          if SERVER and bomb.Disarm then
-            bomb:Disarm(self.Owner)
+            bomb:Disarm(self:GetOwner())
             sound.Play(defuse, bomb:GetPos())
          end
 
@@ -75,9 +75,9 @@ if CLIENT then
       return self.BaseClass.Initialize(self)
    end
 
-   function SWEP:DrawWorldModel()
-      if not IsValid(self.Owner) then
-         self:DrawModel()
+   function SWEP:DrawWorldModel(flags)
+      if not IsValid(self:GetOwner()) then
+         self:DrawModel(flags)
       end
    end
 end
@@ -87,8 +87,8 @@ function SWEP:Reload()
 end
 
 function SWEP:Deploy()
-   if SERVER and IsValid(self.Owner) then
-      self.Owner:DrawViewModel(false)
+   if SERVER and IsValid(self:GetOwner()) then
+      self:GetOwner():DrawViewModel(false)
    end
    return true
 end

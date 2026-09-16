@@ -36,7 +36,7 @@ end
 
 if SERVER then
    local ttt_hats_reclaim = CreateConVar("ttt_detective_hats_reclaim", "1")
-   local ttt_hats_innocent = CreateConVar("ttt_detective_hats_reclaim_any", "0")
+   local ttt_hats_innocent = CreateConVar("ttt_detective_hats_reclaim_any", "1")
 
    function ENT:OnRemove()
       self:SetBeingWorn(false)
@@ -117,7 +117,7 @@ if SERVER then
          self:SetParent(ply)
          self.Wearer = ply
    
-         ply.hat = self.Entity
+         ply.hat = self
    
          self:SetBeingWorn(true)
    
@@ -127,6 +127,7 @@ if SERVER then
 
    local function TestHat(ply, cmd, args)
       local hat = ents.Create("ttt_hat_deerstalker")
+      if not IsValid(hat) then print("Failed to create hat entity!") return end
 
       hat:SetPos(ply:GetPos() + Vector(0,0,70))
       hat:SetAngles(ply:GetAngles())

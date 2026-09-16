@@ -1,3 +1,5 @@
+
+-- TODO: Hack. Move to where color is defined?
 TYPE_COLOR = 255
 
 net.Receivers = {}
@@ -6,7 +8,7 @@ net.Receivers = {}
 -- Set up a function to receive network messages
 --
 function net.Receive( name, func )
-		
+
 	net.Receivers[ name:lower() ] = func
 
 end
@@ -18,9 +20,9 @@ function net.Incoming( len, client )
 
 	local i = net.ReadHeader()
 	local strName = util.NetworkIDToString( i )
-	
+
 	if ( !strName ) then return end
-	
+
 	local func = net.Receivers[ strName:lower() ]
 	if ( !func ) then return end
 
@@ -28,7 +30,7 @@ function net.Incoming( len, client )
 	-- len includes the 16 bit int which told us the message name
 	--
 	len = len - 16
-	
+
 	func( len, client )
 
 end
@@ -41,7 +43,7 @@ net.WriteBool = net.WriteBit
 function net.ReadBool()
 
 	return net.ReadBit() == 1
-	
+
 end
 
 --
@@ -49,85 +51,164 @@ end
 --
 function net.WriteEntity( ent )
 
-	if ( !IsValid( ent ) ) then 
-		net.WriteUInt( 0, 16 )
+	if ( !IsValid( ent ) ) then
+		net.WriteUInt( 0, MAX_EDICT_BITS )
 	else
-		net.WriteUInt( ent:EntIndex(), 16 )
+		net.WriteUInt( ent:EntIndex(), MAX_EDICT_BITS )
 	end
 
 end
 
 function net.ReadEntity()
 
-	local i = net.ReadUInt( 16 )
+	local i = net.ReadUInt( MAX_EDICT_BITS )
 	if ( !i ) then return end
-	
+
 	return Entity( i )
-	
+
 end
+
+
+--
+-- Read/Write a player to the stream
+--
+
+function net.WritePlayer( ply )
+	net.WriteUInt( IsValid( ply ) and ply:IsPlayer() and ply:EntIndex() or 0, MAX_PLAYER_BITS )
+end
+
+function net.ReadPlayer()
+	return Entity( net.ReadUInt( MAX_PLAYER_BITS ) )
+end
+
 
 --
 -- Read/Write a color to/from the stream
 --
-function net.WriteColor( col )
+function net.WriteColor( col, writeAlpha )
+	if ( writeAlpha == nil ) then writeAlpha = true end
 
 	assert( IsColor( col ), "net.WriteColor: color expected, got ".. type( col ) )
 
-	net.WriteUInt( col.r, 8 )
-	net.WriteUInt( col.g, 8 )
-	net.WriteUInt( col.b, 8 )
-	net.WriteUInt( col.a, 8 )
+	local r, g, b, a = col:Unpack()
+	net.WriteUInt( r, 8 )
+	net.WriteUInt( g, 8 )
+	net.WriteUInt( b, 8 )
 
+	if ( writeAlpha ) then
+		net.WriteUInt( a, 8 )
+	end
 end
 
-function net.ReadColor()
+function net.ReadColor( readAlpha )
+	if ( readAlpha == nil ) then readAlpha = true end
 
-	local r, g, b, a = 
-		net.ReadUInt( 8 ),
+	local r, g, b =
 		net.ReadUInt( 8 ),
 		net.ReadUInt( 8 ),
 		net.ReadUInt( 8 )
+
+	local a = 255
+	if ( readAlpha ) then a = net.ReadUInt( 8 ) end
 
 	return Color( r, g, b, a )
 
 end
 
+local function HasCyclicReferences( tab )
+	local function check( t, visited )
+		if ( visited[ t ] ) then return true end
+		visited[ t ] = true
+
+		for k, v in pairs( t ) do
+			if ( istable( k ) ) then
+				if ( check( k, visited ) ) then return true end
+			end
+			if ( istable( v ) ) then
+				if ( check( v, visited ) ) then return true end
+			end
+		end
+
+		visited[ t ] = nil
+
+		return false
+	end
+
+	local visited = {}
+	return check( tab, visited )
+end
+
 --
 -- Write a whole table to the stream
 -- This is less optimal than writing each
--- item indivdually and in a specific order
+-- item individually and in a specific order
 -- because it adds type information before each var
 --
-function net.WriteTable( tab )
+function net.WriteTable( tab, seq )
 
-	for k, v in pairs( tab ) do
-	
-		net.WriteType( k )
-		net.WriteType( v )
-	
+	-- Check for cyclic references in the table. Trying to write such a table will cause a stack overflow,
+	-- So we display a more friendly error message instead.
+	if ( HasCyclicReferences( tab ) ) then
+		error( "net.WriteTable: Cyclic table detected. Cannot write tables with cyclic references.", 2 )
 	end
-	
-	-- End of table
-	net.WriteType( nil )
+
+	if ( seq ) then
+
+		local len = #tab
+		net.WriteUInt( len, 32 )
+
+		for i = 1, len do
+
+			net.WriteType( tab[ i ] )
+
+		end
+
+	else
+
+		for k, v in pairs( tab ) do
+
+			net.WriteType( k )
+			net.WriteType( v )
+
+		end
+
+		-- End of table
+		net.WriteType( nil )
+
+	end
 
 end
 
-function net.ReadTable()
+function net.ReadTable( seq )
 
 	local tab = {}
-	
-	while true do
-	
-		local k = net.ReadType()
-		if ( k == nil ) then return tab end
-		
-		tab[ k ] = net.ReadType()
-		
+
+	if ( seq ) then
+
+		for i = 1, net.ReadUInt( 32 ) do
+
+			tab[ i ] = net.ReadType()
+
+		end
+
+	else
+
+		while true do
+
+			local k = net.ReadType()
+			if ( k == nil ) then break end
+
+			tab[ k ] = net.ReadType()
+
+		end
+
 	end
+
+	return tab
 
 end
 
-net.WriteVars = 
+net.WriteVars =
 {
 	[TYPE_NIL]			= function ( t, v )	net.WriteUInt( t, 8 )								end,
 	[TYPE_STRING]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteString( v )		end,
@@ -139,13 +220,12 @@ net.WriteVars =
 	[TYPE_ANGLE]		= function ( t, v )	net.WriteUInt( t, 8 )	net.WriteAngle( v )			end,
 	[TYPE_MATRIX]		= function ( t, v ) net.WriteUInt( t, 8 )	net.WriteMatrix( v )		end,
 	[TYPE_COLOR]		= function ( t, v ) net.WriteUInt( t, 8 )	net.WriteColor( v )			end,
-	
 }
 
 function net.WriteType( v )
 	local typeid = nil
 
-	if IsColor( v ) then
+	if ( IsColor( v ) ) then
 		typeid = TYPE_COLOR
 	else
 		typeid = TypeID( v )
@@ -153,12 +233,12 @@ function net.WriteType( v )
 
 	local wv = net.WriteVars[ typeid ]
 	if ( wv ) then return wv( typeid, v ) end
-	
+
 	error( "net.WriteType: Couldn't write " .. type( v ) .. " (type " .. typeid .. ")" )
 
 end
 
-net.ReadVars = 
+net.ReadVars =
 {
 	[TYPE_NIL]		= function ()	return nil end,
 	[TYPE_STRING]	= function ()	return net.ReadString() end,
@@ -180,4 +260,5 @@ function net.ReadType( typeid )
 	if ( rv ) then return rv() end
 
 	error( "net.ReadType: Couldn't read type " .. typeid )
+
 end

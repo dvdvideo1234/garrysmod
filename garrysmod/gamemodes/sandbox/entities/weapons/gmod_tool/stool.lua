@@ -34,23 +34,21 @@ function ToolObj:CreateConVars()
 
 	local mode = self:GetMode()
 
+	self.AllowedCVar = CreateConVar( "toolmode_allow_" .. mode, "1", { FCVAR_NOTIFY, FCVAR_REPLICATED }, "Set to 0 to disallow players being able to use the \"" .. mode .. "\" tool." )
+	self.ClientConVars = {}
+	self.ServerConVars = {}
+
 	if ( CLIENT ) then
 
 		for cvar, default in pairs( self.ClientConVar ) do
-
-			CreateClientConVar( mode .. "_" .. cvar, default, true, true )
-
+			self.ClientConVars[ cvar ] = CreateClientConVar( mode .. "_" .. cvar, default, true, true, "Tool specific client setting (" .. mode .. ")" )
 		end
 
-		return
-	end
+	else
 
-	-- Note: I changed this from replicated because replicated convars don't work
-	-- when they're created via Lua.
-
-	if ( SERVER ) then
-
-		self.AllowedCVar = CreateConVar( "toolmode_allow_" .. mode, 1, FCVAR_NOTIFY )
+		for cvar, default in pairs( self.ServerConVar ) do
+			self.ServerConVars[ cvar ] = CreateConVar( mode .. "_" .. cvar, default, FCVAR_ARCHIVE, "Tool specific server setting (" .. mode .. ")" )
+		end
 
 	end
 
@@ -58,9 +56,41 @@ end
 
 function ToolObj:GetServerInfo( property )
 
-	local mode = self:GetMode()
+	if ( self.ServerConVars[ property ] and SERVER ) then
+		return self.ServerConVars[ property ]:GetString()
+	end
 
-	return GetConVarString( mode .. "_" .. property )
+	return GetConVarString( self:GetMode() .. "_" .. property )
+
+end
+
+function ToolObj:GetClientInfo( property )
+
+	if ( self.ClientConVars[ property ] and CLIENT ) then
+		return self.ClientConVars[ property ]:GetString()
+	end
+
+	return self:GetOwner():GetInfo( self:GetMode() .. "_" .. property )
+
+end
+
+function ToolObj:GetClientNumber( property, default )
+
+	if ( self.ClientConVars[ property ] and CLIENT ) then
+		return self.ClientConVars[ property ]:GetFloat()
+	end
+
+	return self:GetOwner():GetInfoNum( self:GetMode() .. "_" .. property, tonumber( default ) or 0 )
+
+end
+
+function ToolObj:GetClientBool( property, default )
+
+	if ( self.ClientConVars[ property ] and CLIENT ) then
+		return self.ClientConVars[ property ]:GetBool()
+	end
+
+	return math.floor( self:GetOwner():GetInfoNum( self:GetMode() .. "_" .. property, tonumber( default ) or 0 ) ) != 0
 
 end
 
@@ -75,21 +105,8 @@ function ToolObj:BuildConVarList()
 
 end
 
-function ToolObj:GetClientInfo( property )
-
-	return self:GetOwner():GetInfo( self:GetMode() .. "_" .. property )
-
-end
-
-function ToolObj:GetClientNumber( property, default )
-
-	return self:GetOwner():GetInfoNum( self:GetMode() .. "_" .. property, tonumber( default ) or 0 )
-
-end
-
 function ToolObj:Allowed()
 
-	if ( CLIENT ) then return true end
 	return self.AllowedCVar:GetBool()
 
 end
@@ -99,9 +116,9 @@ end
 function ToolObj:Init() end
 
 function ToolObj:GetMode()		return self.Mode end
-function ToolObj:GetSWEP()		return self.SWEP end
-function ToolObj:GetOwner()		return self:GetSWEP().Owner or self.Owner end
-function ToolObj:GetWeapon()	return self:GetSWEP().Weapon or self.Weapon end
+function ToolObj:GetWeapon()	return self.SWEP end
+function ToolObj:GetOwner()		return self:GetWeapon():GetOwner() or self.Owner end
+function ToolObj:GetSWEP()		return self:GetWeapon() end
 
 function ToolObj:LeftClick()	return false end
 function ToolObj:RightClick()	return false end
@@ -118,7 +135,7 @@ function ToolObj:CheckObjects()
 
 	for k, v in pairs( self.Objects ) do
 
-		if ( !v.Ent:IsWorld() && !v.Ent:IsValid() ) then
+		if ( !v.Ent:IsWorld() and !v.Ent:IsValid() ) then
 			self:ClearObjects()
 		end
 
@@ -126,11 +143,14 @@ function ToolObj:CheckObjects()
 
 end
 
-local toolmodes = file.Find( SWEP.Folder .. "/stools/*.lua", "LUA" )
+for _, val in ipairs( file.Find( SWEP.Folder .. "/stools/*.lua", "LUA" ) ) do
 
-for key, val in pairs( toolmodes ) do
+	local _, _, toolmode = string.find( val, "([%w_]*).lua" )
 
-	local char1, char2, toolmode = string.find( val, "([%w_]*).lua" )
+	-- In multiplayer, the clientside filename is always lowercase (due to the Lua datapack)
+	-- So ensure that the toolmode matches between client and server,
+	-- when the serverside name is not all lowercase
+	toolmode = toolmode:lower()
 
 	TOOL = ToolObj:Create()
 	TOOL.Mode = toolmode
@@ -140,7 +160,9 @@ for key, val in pairs( toolmodes ) do
 
 	TOOL:CreateConVars()
 
-	SWEP.Tool[ toolmode ] = TOOL
+	if ( hook.Run( "PreRegisterTOOL", TOOL, toolmode ) != false ) then
+		SWEP.Tool[ toolmode ] = TOOL
+	end
 
 	TOOL = nil
 
@@ -148,99 +170,110 @@ end
 
 ToolObj = nil
 
-if ( CLIENT ) then
+if ( SERVER ) then return end
 
-	-- Keep the tool list handy
-	local TOOLS_LIST = SWEP.Tool
+-- Keep the tool list handy
+local TOOLS_LIST = SWEP.Tool
 
-	-- Add the STOOLS to the tool menu
-	hook.Add( "PopulateToolMenu", "AddSToolsToMenu", function()
+-- Add the STOOLS to the tool menu
+hook.Add( "PopulateToolMenu", "AddSToolsToMenu", function()
 
-		for ToolName, TOOL in pairs( TOOLS_LIST ) do
+	for ToolName, tool in pairs( TOOLS_LIST ) do
 
-			if ( TOOL.AddToMenu != false ) then
+		if ( tool.AddToMenu != false ) then
 
-				spawnmenu.AddToolMenuOption( TOOL.Tab or "Main",
-											TOOL.Category or "New Category",
-											ToolName,
-											TOOL.Name or "#" .. ToolName,
-											TOOL.Command or "gmod_tool " .. ToolName,
-											TOOL.ConfigName or ToolName,
-											TOOL.BuildCPanel )
+			spawnmenu.AddToolMenuOption(
+				tool.Tab or "Main",
+				tool.Category or "New Category",
+				ToolName,
+				tool.Name or ( "#" .. ToolName ),
+				tool.Command or ( "gmod_tool " .. ToolName ),
+				tool.ConfigName or ToolName,
+				tool.BuildCPanel
+			)
+
+		end
+
+	end
+
+end )
+
+--
+-- Search
+--
+search.AddProvider( function( str )
+
+	local searchTerms = string.Explode( " ", str )
+
+	local list = {}
+
+	for k, v in pairs( TOOLS_LIST ) do
+
+		-- If a tool isn't in the tool menu, then clicking on its contenticon won't do anything, so exclude it
+		if ( v.AddToMenu == false ) then continue end
+
+		local niceName = v.Name or ( "#" .. k )
+		if ( niceName:StartsWith( "#" ) ) then niceName = language.GetPhrase( niceName ) end
+
+		for srchId, srchTxt in ipairs( searchTerms ) do
+
+			if ( !k:lower():find( srchTxt, nil, true ) and !niceName:lower():find( srchTxt, nil, true ) ) then
+
+				break
+
+			elseif ( srchId == #searchTerms ) then
+
+				local entry = {
+					text = niceName,
+					icon = spawnmenu.CreateContentIcon( "tool", nil, {
+						spawnname = k,
+						nicename = v.Name or ( "#" .. k )
+					} ),
+					words = { k }
+				}
+
+				table.insert( list, entry )
 
 			end
 
 		end
 
-	end )
+		if ( #list >= GetConVarNumber( "sbox_search_maxresults" ) / 32 ) then break end
 
-	--
-	-- Search
-	--
-	search.AddProvider( function( str )
+	end
 
-		str = str:PatternSafe()
+	return list
 
-		local list = {}
+end, "tools" )
 
-		for k, v in pairs( TOOLS_LIST ) do
+--
+-- Tool spawnmenu icon
+--
+spawnmenu.AddContentType( "tool", function( container, obj )
 
-			if ( !k:find( str ) ) then continue end
+	if ( !obj.spawnname ) then return end
 
-			local entry = {
-				text = v.Name or "#" .. k,
-				icon = spawnmenu.CreateContentIcon( "tool", nil, {
-					spawnname = k,
-					nicename = v.Name or "#" .. k
-				} ),
-				words = { k }
-			}
+	local icon = vgui.Create( "ContentIcon", container )
+	icon:SetContentType( "tool" )
+	icon:SetSpawnName( obj.spawnname )
+	icon:SetName( obj.nicename or ( "#tool." .. obj.spawnname .. ".name" ) )
+	icon:SetMaterial( "gui/tool.png" )
 
-			table.insert( list, entry )
+	icon.DoClick = function()
 
-			if ( #list >= 32 ) then break end
+		spawnmenu.ActivateTool( obj.spawnname )
 
-		end
+		surface.PlaySound( "ui/buttonclickrelease.wav" )
 
-		return list
+	end
 
-	end )
+	icon.OpenMenu = icon.OpenGenericSpawnmenuRightClickMenu
 
-	--
-	-- Tool spawnmenu icon
-	--
-	spawnmenu.AddContentType( "tool", function( container, obj )
+	if ( IsValid( container ) ) then
+		container:Add( icon )
+	end
 
-		if ( !obj.spawnname ) then return end
+	return icon
 
-		local icon = vgui.Create( "ContentIcon", container )
-		icon:SetContentType( "tool" )
-		icon:SetSpawnName( obj.spawnname )
-		icon:SetName( obj.nicename or "#tool." .. obj.spawnname .. ".name" )
-		icon:SetMaterial( "gui/tool.png" )
+end )
 
-		icon.DoClick = function()
-
-			spawnmenu.ActivateTool( obj.spawnname )
-
-			surface.PlaySound( "ui/buttonclickrelease.wav" )
-
-		end
-
-		icon.OpenMenu = function( icon )
-
-			local menu = DermaMenu()
-				menu:AddOption( "Delete", function() icon:Remove() hook.Run( "SpawnlistContentChanged", icon ) end )
-			menu:Open()
-
-		end
-
-		if ( IsValid( container ) ) then
-			container:Add( icon )
-		end
-
-		return icon
-
-	end )
-
-end

@@ -51,6 +51,27 @@ function PANEL:SetImage( img )
 end
 PANEL.SetIcon = PANEL.SetImage
 
+function PANEL:SetMaterial( mat )
+
+	if ( !mat ) then
+
+		if ( IsValid( self.m_Image ) ) then
+			self.m_Image:Remove()
+		end
+
+		return
+	end
+
+	if ( !IsValid( self.m_Image ) ) then
+		self.m_Image = vgui.Create( "DImage", self )
+	end
+
+	self.m_Image:SetMaterial( mat )
+	self.m_Image:SizeToContents()
+	self:InvalidateLayout()
+
+end
+
 function PANEL:Paint( w, h )
 
 	derma.SkinHook( "Paint", "Button", self, w, h )
@@ -72,8 +93,7 @@ function PANEL:UpdateColours( skin )
 
 end
 
-function PANEL:PerformLayout()
-
+function PANEL:PerformLayoutImage()
 	--
 	-- If we have an image we have to place the image on the left
 	-- and make the text align to the left, then set the inset
@@ -81,27 +101,69 @@ function PANEL:PerformLayout()
 	--
 	if ( IsValid( self.m_Image ) ) then
 
-		self.m_Image:SetPos( 4, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
+		local targetSize = math.min( self:GetWide() - 4, self:GetTall() - 4 )
 
-		self:SetTextInset( self.m_Image:GetWide() + 16, 0 )
+		local imgW, imgH = self.m_Image.ActualWidth, self.m_Image.ActualHeight
+		local zoom = math.min( targetSize / imgW, targetSize / imgH, 1 )
+		local newSizeX = math.ceil( imgW * zoom )
+		local newSizeY = math.ceil( imgH * zoom )
+
+		self.m_Image:SetWide( newSizeX )
+		self.m_Image:SetTall( newSizeY )
+
+		if ( self:GetWide() < self:GetTall() ) then
+			self.m_Image:SetPos( 4, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
+		else
+			self.m_Image:SetPos( 2 + ( targetSize - self.m_Image:GetWide() ) * 0.5, ( self:GetTall() - self.m_Image:GetTall() ) * 0.5 )
+		end
+
+		-- For center alignments, reduce the inset of the image, so the text appears more centered visually
+		local alignment = self:GetContentAlignment()
+		if ( alignment == 8 || alignment == 5 || alignment == 2 ) then
+			self:SetTextInset( self.m_Image:GetWide() + 4, 0 )
+		else
+			self:SetTextInset( self.m_Image:GetWide() + 8, 0 )
+		end
 
 	end
+end
 
-	DLabel.PerformLayout( self )
+function PANEL:PerformLayout( w, h )
+
+	self:PerformLayoutImage()
+
+	DLabel.PerformLayout( self, w, h )
 
 end
 
-function PANEL:SetConsoleCommand( strName, strArgs )
+function PANEL:SetConsoleCommand( strName, strArg, ... )
 
-	self.DoClick = function( self, val )
-		RunConsoleCommand( strName, strArgs )
+	if ( select( "#", ... ) > 0 ) then
+		local extraArgs = { ... }
+		self.DoClick = function( slf, val )
+			RunConsoleCommand( strName, strArg, unpack( extraArgs ) )
+		end
+		return
+	end
+
+	self.DoClick = function( slf, val )
+		RunConsoleCommand( strName, strArg )
 	end
 
 end
 
 function PANEL:SizeToContents()
+	self:PerformLayoutImage() -- Set the text inset first.
 	local w, h = self:GetContentSize()
+
 	self:SetSize( w + 8, h + 4 )
+end
+
+function PANEL:SizeToContentsX( addVal )
+	self:PerformLayoutImage() -- Set the text inset first.
+	local w, h = self:GetContentSize()
+
+	self:SetWide( w + 8 + ( addVal or 0 ) )
 end
 
 function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
@@ -120,7 +182,7 @@ PANEL = table.Copy( PANEL )
 
 function PANEL:SetActionFunction( func )
 
-	self.DoClick = function( self, val ) func( self, "Command", 0, 0 ) end
+	self.DoClick = function( slf, val ) func( slf, "Command", 0, 0 ) end
 
 end
 

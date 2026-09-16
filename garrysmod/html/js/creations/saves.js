@@ -1,25 +1,28 @@
 
-App = angular.module( 'CSavesApp', [ 'tranny' ] );
+var IS_SPAWN_MENU = true;
 
-App.config( function ( $routeProvider, $locationProvider )
+App = angular.module( 'CSavesApp', [ 'ngRoute', 'ngLocalize' ] );
+
+App.config( function( $routeProvider, $compileProvider, $locationProvider, $controllerProvider )
 {
 	$routeProvider.when( '/', { templateUrl: 'template/creations/saves.html' } );
+	$routeProvider.when( '/list/:Category/', { templateUrl: 'template/creations/saves.html' } );
 	$routeProvider.when( '/list/:Category/:Tag/', { templateUrl: 'template/creations/saves.html' } );
+	
+	$controllerProvider.register( 'CSaves', CSaves );
+	$controllerProvider.register( 'ControllerSaves', ControllerSaves );
 } );
 
 var CreationScope		= null;
-var CreationLocation	= null;
 
 function CSaves( $scope, $timeout, $location )
 {
 	CreationScope		= $scope;
-	CreationLocation	= $location;
 
 	CreationScope.MyCategories =
 	[
 		"local",
-		"subscribed_ugc",
-		//"favorites_ugc"
+		"subscribed_ugc"
 	];
 
 	CreationScope.Categories =
@@ -31,6 +34,8 @@ function CSaves( $scope, $timeout, $location )
 
 	CreationScope.CategoriesSecondary =
 	[
+		"followed",
+		"favorite",
 		"friends",
 		"mine"
 	];
@@ -78,4 +83,18 @@ function SetMap( mapname )
 {
 	CreationScope.MapName = mapname;
 	UpdateDigest( CreationScope, 10 );
+}
+
+function WindowResized()
+{
+	// save is from control.Saves.js
+	save.RefreshDimensions();
+	save.UpdatePageNav();
+
+	// Refresh HTML
+	save.DigestUpdateResize = setTimeout( function()
+	{
+		self.DigestUpdateResize = 0;
+		Scope.Go( 0 );
+	}, 500 )
 }

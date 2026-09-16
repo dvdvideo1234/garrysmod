@@ -11,16 +11,13 @@ spawnmenu.AddCreationTab( "#spawnmenu.category.dupes", function()
 	ws_dupe = WorkshopFileBase( "dupe", { "dupe" } )
 	ws_dupe.HTML = HTML
 
-	HTML:OpenURL( "asset://garrysmod/html/dupes.html" )
-	HTML:Call( "SetDupeSaveState( " .. tostring( DupeInClipboard ).. " );" )
-
 	function ws_dupe:FetchLocal( offset, perpage )
 
 		local f = file.Find( "dupes/*.dupe", "MOD", "datedesc" )
 
 		local saves = {}
 
-		for k, v in pairs( f ) do
+		for k, v in ipairs( f ) do
 
 			if ( k <= offset ) then continue end
 			if ( k > offset + perpage ) then break end
@@ -28,7 +25,8 @@ spawnmenu.AddCreationTab( "#spawnmenu.category.dupes", function()
 			local entry = {
 				file	= "dupes/" .. v,
 				name	= v:StripExtension(),
-				preview	= "dupes/" .. v:StripExtension() .. ".jpg"
+				preview	= "dupes/" .. v:StripExtension() .. ".jpg",
+				description	= "Local duplication stored on your computer. Local content can be deleted in the main menu."
 			}
 
 			table.insert( saves, entry )
@@ -41,7 +39,7 @@ spawnmenu.AddCreationTab( "#spawnmenu.category.dupes", function()
 		}
 
 		local json = util.TableToJSON( results, false )
-		HTML:Call( "dupe.ReceiveLocal( "..json.." )" )
+		HTML:Call( "dupe.ReceiveLocal( " .. json .. " )" )
 
 	end
 
@@ -53,10 +51,14 @@ spawnmenu.AddCreationTab( "#spawnmenu.category.dupes", function()
 
 	function ws_dupe:DownloadAndArm( id )
 
-		MsgN( "Downloading Dupe...\n" )
-		steamworks.Download( id, true, function( name )
+		-- Server doesn't allow us to arm dupes, don't even try to download anything
+		local res, msg = hook.Run( "CanArmDupe", LocalPlayer() )
+		if ( res == false ) then LocalPlayer():ChatPrint( msg or "Refusing to download Workshop dupe, server has blocked usage of the Duplicator tool!" ) return end
 
-			MsgN( "Finished - arming!\n" )
+		MsgN( "Downloading Dupe..." )
+		steamworks.DownloadUGC( id, function( name )
+
+			MsgN( "Finished - arming!" )
 			ws_dupe:Arm( name )
 
 		end )
@@ -69,6 +71,9 @@ spawnmenu.AddCreationTab( "#spawnmenu.category.dupes", function()
 
 	end
 
+	HTML:OpenURL( "asset://garrysmod/html/dupes.html" )
+	HTML:Call( "SetDupeSaveState( " .. tostring( DupeInClipboard ) .. " )" )
+
 	return HTML
 
 end, "icon16/control_repeat_blue.png", 200 )
@@ -79,7 +84,7 @@ hook.Add( "DupeSaveAvailable", "UpdateDupeSpawnmenuAvailable", function()
 
 	if ( !IsValid( HTML ) ) then return end
 
-	HTML:Call( "SetDupeSaveState( true );" )
+	HTML:Call( "SetDupeSaveState( true )" )
 
 end )
 
@@ -89,7 +94,7 @@ hook.Add( "DupeSaveUnavailable", "UpdateDupeSpawnmenuUnavailable", function()
 
 	if ( !IsValid( HTML ) ) then return end
 
-	HTML:Call( "SetDupeSaveState( false );" )
+	HTML:Call( "SetDupeSaveState( false )" )
 
 end )
 
@@ -97,7 +102,7 @@ hook.Add( "DupeSaved", "DuplicationSavedSpawnMenu", function()
 
 	if ( !IsValid( HTML ) ) then return end
 
-	HTML:Call( "ShowLocalDupes();" )
+	HTML:Call( "ShowLocalDupes()" )
 
 end )
 
@@ -105,6 +110,6 @@ concommand.Add( "dupe_show", function()
 
 	g_SpawnMenu:OpenCreationMenuTab( "#spawnmenu.category.dupes" )
 
-	timer.Simple( 1.0, function() if ( !IsValid( HTML ) ) then return end HTML:Call( "ShowLocalDupes();" ) end )
+	timer.Simple( 1.0, function() if ( !IsValid( HTML ) ) then return end HTML:Call( "ShowLocalDupes()" ) end )
 
 end, nil, "", { FCVAR_DONTRECORD } )

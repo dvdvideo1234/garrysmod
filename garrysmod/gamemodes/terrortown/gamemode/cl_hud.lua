@@ -1,24 +1,21 @@
 -- HUD HUD HUD
 
-local table = table
 local surface = surface
 local draw = draw
 local math = math
 local string = string
 
-local GetTranslation = LANG.GetTranslation
-local GetPTranslation = LANG.GetParamTranslation
 local GetLang = LANG.GetUnsafeLanguageTable
 local interp = string.Interp
 
 -- Fonts
-surface.CreateFont("TraitorState", {font = "Trebuchet24",
+surface.CreateFont("TraitorState", {font = GAMEMODE_DEFAULT_UI_FONT,
                                     size = 28,
                                     weight = 1000})
-surface.CreateFont("TimeLeft",     {font = "Trebuchet24",
+surface.CreateFont("TimeLeft",     {font = GAMEMODE_DEFAULT_UI_FONT,
                                     size = 24,
                                     weight = 800})
-surface.CreateFont("HealthAmmo",   {font = "Trebuchet24",
+surface.CreateFont("HealthAmmo",   {font = GAMEMODE_DEFAULT_UI_FONT,
                                     size = 24,
                                     weight = 750})
 -- Color presets
@@ -29,25 +26,25 @@ local bg_colors = {
    traitor = Color(200, 25, 25, 200),
    innocent = Color(25, 200, 25, 200),
    detective = Color(25, 25, 200, 200)
-};
+}
 
 local health_colors = {
    border = COLOR_WHITE,
    background = Color(100, 25, 25, 222),
    fill = Color(200, 50, 50, 250)
-};
+}
 
 local ammo_colors = {
    border = COLOR_WHITE,
    background = Color(20, 20, 5, 222),
    fill = Color(205, 155, 0, 255)
-};
+}
 
 
 -- Modified RoundedBox
 local Tex_Corner8 = surface.GetTextureID( "gui/corner8" )
 local function RoundedMeter( bs, x, y, w, h, color)
-   surface.SetDrawColor(clr(color))
+   surface.SetDrawColor( color.r, color.g, color.b, color.a )
 
    surface.DrawRect( x+bs, y, w-bs*2, h )
    surface.DrawRect( x, y+bs, bs, h-bs*2 )
@@ -88,7 +85,7 @@ local roundstate_string = {
    [ROUND_PREP]   = "round_prep",
    [ROUND_ACTIVE] = "round_active",
    [ROUND_POST]   = "round_post"
-};
+}
 
 -- Returns player's ammo information
 local function GetAmmo(ply)
@@ -128,14 +125,11 @@ local function DrawBg(x, y, width, height, client)
    draw.RoundedBox(8, x, y, tw, th, col)
 end
 
-local sf = surface
-local dr = draw
-
 local function ShadowedText(text, font, x, y, color, xalign, yalign)
 
-   dr.SimpleText(text, font, x+2, y+2, COLOR_BLACK, xalign, yalign)
+   draw.SimpleText(text, font, x+2, y+2, COLOR_BLACK, xalign, yalign)
 
-   dr.SimpleText(text, font, x, y, color, xalign, yalign)
+   draw.SimpleText(text, font, x, y, color, xalign, yalign)
 end
 
 local margin = 10
@@ -153,9 +147,9 @@ local function PunchPaint(client)
 
    local color = bg_colors.background_main
 
-   dr.SimpleText(L.punch_title, "HealthAmmo", ScrW() / 2, y, color, TEXT_ALIGN_CENTER)
+   draw.SimpleText(L.punch_title, "HealthAmmo", ScrW() / 2, y, color, TEXT_ALIGN_CENTER)
 
-   dr.SimpleText(L.punch_help, "TabLarge", ScrW() / 2, margin, COLOR_WHITE, TEXT_ALIGN_CENTER)
+   draw.SimpleText(L.punch_help, "TabLarge", ScrW() / 2, margin, COLOR_WHITE, TEXT_ALIGN_CENTER)
 
    local bonus = client:GetNWInt("bonuspunches", 0)
    if bonus != 0 then
@@ -166,7 +160,7 @@ local function PunchPaint(client)
          text = interp(L.punch_malus, {num = bonus})
       end
 
-      dr.SimpleText(text, "TabLarge", ScrW() / 2, y * 2, COLOR_WHITE, TEXT_ALIGN_CENTER)
+      draw.SimpleText(text, "TabLarge", ScrW() / 2, y * 2, COLOR_WHITE, TEXT_ALIGN_CENTER)
    end
 end
 
@@ -228,7 +222,7 @@ local function InfoPaint(client)
    local health = math.max(0, client:Health())
    local health_y = y + margin
 
-   PaintBar(x + margin, health_y, bar_width, bar_height, health_colors, health/100)
+   PaintBar(x + margin, health_y, bar_width, bar_height, health_colors, health/client:GetMaxHealth())
 
    ShadowedText(tostring(health), "HealthAmmo", bar_width, health_y, COLOR_WHITE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_RIGHT)
 
@@ -309,7 +303,7 @@ local function InfoPaint(client)
    ShadowedText(text, font, rx, ry, color)
 
    if is_haste then
-      dr.SimpleText(L.hastemode, "TabLarge", x + margin + 165, traitor_y - 8)
+      draw.SimpleText(L.hastemode, "TabLarge", x + margin + 165, traitor_y - 8)
    end
 
 end

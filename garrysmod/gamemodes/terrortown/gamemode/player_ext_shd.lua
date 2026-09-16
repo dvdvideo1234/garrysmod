@@ -35,7 +35,7 @@ local role_strings = {
    [ROLE_TRAITOR]   = "traitor",
    [ROLE_INNOCENT]  = "innocent",
    [ROLE_DETECTIVE] = "detective"
-};
+}
 
 local GetRTranslation = CLIENT and LANG.GetRawTranslation or util.passthrough
 
@@ -53,7 +53,7 @@ end
 function plymeta:GetBaseKarma() return self:GetNWFloat("karma", 1000) end
 
 function plymeta:HasEquipmentWeapon()
-   for _, wep in pairs(self:GetWeapons()) do
+   for _, wep in ipairs(self:GetWeapons()) do
       if IsValid(wep) and wep:IsEquipment() then
          return true
       end
@@ -71,7 +71,7 @@ end
 function plymeta:CanCarryType(t)
    if not t then return false end
 
-   for _, w in pairs(self:GetWeapons()) do
+   for _, w in ipairs(self:GetWeapons()) do
       if w.Kind and w.Kind == t then
          return false
       end
@@ -106,44 +106,30 @@ function plymeta:HasEquipment()
    return self:HasEquipmentItem() or self:HasEquipmentWeapon()
 end
 
-if CLIENT then
-   -- Server has this, but isn't shared for some reason
-   function plymeta:HasWeapon(cls)
-      for _, wep in pairs(self:GetWeapons()) do
-         if IsValid(wep) and wep:GetClass() == cls then
-            return true
-         end
-      end
-
-      return false
-   end
-
-   local gmod_GetWeapons = plymeta.GetWeapons
-   function plymeta:GetWeapons()
-      if self != LocalPlayer() then
-         return {}
-      else
-         return gmod_GetWeapons(self)
-      end
-   end
-end
-
 -- Override GetEyeTrace for an optional trace mask param. Technically traces
 -- like GetEyeTraceNoCursor but who wants to type that all the time, and we
 -- never use cursor tracing anyway.
 function plymeta:GetEyeTrace(mask)
-   if self.LastPlayerTraceMask == mask and self.LastPlayerTrace == CurTime() then
-      return self.PlayerTrace
+   mask = mask or MASK_SOLID
+
+   if CLIENT then
+      local framenum = FrameNumber()
+      
+      if self.LastPlayerTrace == framenum and self.LastPlayerTraceMask == mask then
+         return self.PlayerTrace
+      end
+
+      self.LastPlayerTrace = framenum
+      self.LastPlayerTraceMask = mask
    end
 
    local tr = util.GetPlayerTrace(self)
    tr.mask = mask
 
-   self.PlayerTrace = util.TraceLine(tr)
-   self.LastPlayerTrace = CurTime()
-   self.LastPlayerTraceMask = mask
+   tr = util.TraceLine(tr)
+   self.PlayerTrace = tr
 
-   return self.PlayerTrace
+   return tr
 end
 
 
@@ -154,6 +140,20 @@ if CLIENT then
       self:AnimSetGestureWeight(GESTURE_SLOT_CUSTOM, weight)
    end
 
+   local simple_runners = {
+      ACT_GMOD_GESTURE_DISAGREE,
+      ACT_GMOD_GESTURE_BECON,
+      ACT_GMOD_GESTURE_AGREE,
+      ACT_GMOD_GESTURE_WAVE,
+      ACT_GMOD_GESTURE_BOW,
+      ACT_SIGNAL_FORWARD,
+      ACT_SIGNAL_GROUP,
+      ACT_SIGNAL_HALT,
+      ACT_GMOD_TAUNT_CHEER,
+      ACT_GMOD_GESTURE_ITEM_PLACE,
+      ACT_GMOD_GESTURE_ITEM_DROP,
+      ACT_GMOD_GESTURE_ITEM_GIVE
+   }
    local function MakeSimpleRunner(act)
       return function (ply, w)
                 -- just let this gesture play itself and get out of its way
@@ -179,24 +179,19 @@ if CLIENT then
             end
             return w
          end
-   };
+   }
 
    -- Insert all the "simple" gestures that do not need weight control
-   for _, a in pairs{ACT_GMOD_GESTURE_AGREE, ACT_GMOD_GESTURE_DISAGREE,
-                     ACT_GMOD_GESTURE_WAVE, ACT_GMOD_GESTURE_BECON,
-                     ACT_GMOD_GESTURE_BOW, ACT_GMOD_GESTURE_SALUTE,
-                     ACT_GMOD_CHEER, ACT_SIGNAL_FORWARD, ACT_SIGNAL_HALT,
-                     ACT_SIGNAL_GROUP, ACT_ITEM_PLACE, ACT_ITEM_DROP,
-                     ACT_ITEM_GIVE} do
+   for _, a in ipairs(simple_runners) do
       act_runner[a] = MakeSimpleRunner(a)
    end
 
-   CreateConVar("ttt_show_gestures", "1", FCVAR_ARCHIVE)
+   local show_gestures = CreateConVar("ttt_show_gestures", "1", FCVAR_ARCHIVE)
 
    -- Perform the gesture using the GestureRunner system. If custom_runner is
    -- non-nil, it will be used instead of the default runner for the act.
    function plymeta:AnimPerformGesture(act, custom_runner)
-      if GetConVarNumber("ttt_show_gestures") == 0 then return end
+      if not show_gestures:GetBool() then return end
 
       local runner = custom_runner or act_runner[act]
       if not runner then return false end
@@ -227,7 +222,7 @@ if CLIENT then
    function GM:GrabEarAnimation(ply) end
 
    net.Receive("TTT_PerformGesture", function()
-      local ply = net.ReadEntity()
+      local ply = net.ReadPlayer()
       local act = net.ReadUInt(16)
       if IsValid(ply) and act then
          ply:AnimPerformGesture(act)
@@ -244,7 +239,7 @@ else -- SERVER
       if not act then return end
 
       net.Start("TTT_PerformGesture")
-         net.WriteEntity(self)
+         net.WritePlayer(self)
          net.WriteUInt(act, 16)
       net.Broadcast()
    end

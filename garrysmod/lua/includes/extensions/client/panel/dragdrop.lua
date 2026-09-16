@@ -1,12 +1,6 @@
 
 if ( SERVER ) then return end
 
---[[
-
- -- hairy cocks
-
---]]
-
 dragndrop = {}
 
 function dragndrop.Clear()
@@ -59,12 +53,16 @@ function dragndrop.Drop()
 
 		for k, v in pairs( dragndrop.m_ReceiverSlot.Menu ) do
 
-			menu:AddOption( v, function()
+			local opt = menu:AddOption( v, function()
 
 				dragndrop.CallReceiverFunction( true, k, x, y )
 				dragndrop.StopDragging()
 
 			end )
+
+			-- HACK: This is lame, but there's no other way that I can see to get icons for these
+			if ( k == "move" ) then opt:SetIcon( "icon16/arrow_turn_right.png" ) end
+			if ( k == "copy" ) then opt:SetIcon( "icon16/arrow_branch.png" ) end
 
 		end
 
@@ -205,10 +203,10 @@ function dragndrop.Think()
 	-- We're dragging but no mouse buttons are down..
 	-- So force the drop whereever it is!
 	--
-	if ( dragndrop.m_Dragging != nil && !input.IsMouseDown( MOUSE_LEFT ) && !input.IsMouseDown( MOUSE_RIGHT ) ) then
-		--dragndrop.m_Dragging:DragMouseRelease( dragndrop.m_MouseCode )
-		--return
-	end
+	--[[if ( dragndrop.m_Dragging != nil && !input.IsMouseDown( MOUSE_LEFT ) && !input.IsMouseDown( MOUSE_RIGHT ) ) then
+		dragndrop.m_Dragging:DragMouseRelease( dragndrop.m_MouseCode )
+		return
+	end]]
 
 	--
 	-- We're holding down a panel, watch for start of dragging
@@ -242,8 +240,8 @@ hook.Add( "DrawOverlay", "DragNDropPaint", function()
 	if ( dragndrop.m_DraggingMain == nil ) then return end
 	if ( IsValid( dragndrop.m_DropMenu ) ) then return end
 
-	local hold_offset_x = 2048
-	local hold_offset_y = 2048
+	local hold_offset_x = 65535
+	local hold_offset_y = 65535
 
 	-- Find the top, left most panel
 	for k, v in pairs( dragndrop.m_Dragging ) do
@@ -255,7 +253,7 @@ hook.Add( "DrawOverlay", "DragNDropPaint", function()
 
 	end
 
-	DisableClipping( true )
+	local wasEnabled = DisableClipping( true )
 
 		local Alpha = 0.7
 		if ( IsValid( dragndrop.m_Hovered ) ) then Alpha = 0.8 end
@@ -276,14 +274,14 @@ hook.Add( "DrawOverlay", "DragNDropPaint", function()
 				surface.SetAlphaMultiplier( Alpha * dist )
 
 				v.PaintingDragging = true
-				v:PaintAt( ox + v.x - v:GetWide() / 2, oy + v.y - v:GetTall() / 2 ) // fill the gap between the top left corner and the mouse position
+				v:PaintAt( ox + v.x - v:GetWide() / 2, oy + v.y - v:GetTall() / 2 ) -- fill the gap between the top left corner and the mouse position
 				v.PaintingDragging = nil
 
 			end
 
 		surface.SetAlphaMultiplier( 1.0 )
 
-	DisableClipping( false )
+	DisableClipping( wasEnabled )
 
 end )
 hook.Add( "Think", "DragNDropThink", dragndrop.Think )
@@ -403,7 +401,7 @@ function meta:OnStartDragging()
 
 		local canvas = self:GetSelectionCanvas()
 
-		if ( !self:IsSelected() ) then
+		if ( IsValid( canvas ) && !self:IsSelected() ) then
 			canvas:UnselectAll()
 		end
 
@@ -420,7 +418,7 @@ function meta:DragMousePress( mcode )
 	if ( IsValid( dragndrop.m_DropMenu ) ) then return end
 	if ( dragndrop.IsDragging() ) then dragndrop.StopDragging() return end
 
-	if ( IsValid( self.m_pDragParent ) ) then
+	if ( IsValid( self.m_pDragParent ) and self.m_pDragParent ~= self ) then
 		return self.m_pDragParent:DragMousePress( mcode )
 	end
 
@@ -457,13 +455,6 @@ function meta:DragMouseRelease( mcode )
 	if ( !dragndrop.IsDragging() ) then
 		dragndrop.Clear()
 		return false
-	end
-
-	for k, v in pairs( dragndrop.m_Dragging ) do
-
-		if ( !IsValid( v ) ) then continue end
-		v:OnStopDragging()
-
 	end
 
 	dragndrop.Drop()
@@ -511,9 +502,9 @@ end
 --
 function meta:DragHover( HoverTime )
 
-	//
-	// Call DragHoverClick if we've been hovering for 0.1 seconds..
-	//
+	--
+	-- Call DragHoverClick if we've been hovering for 0.1 seconds..
+	--
 	if ( HoverTime < 0.1 ) then dragndrop.m_bHoverClick = false end
 	if ( HoverTime > 0.1 && !dragndrop.m_bHoverClick ) then
 
@@ -535,7 +526,7 @@ function meta:DrawDragHover( x, y, w, h )
 	surface.DrawOutlinedRect( x, y, w, h )
 
 	surface.SetDrawColor( 255, 100, 255, 50 )
-	surface.DrawOutlinedRect( x-1, y-1, w+2, h+2 )
+	surface.DrawOutlinedRect( x - 1, y - 1, w + 2, h + 2 )
 
 	DisableClipping( false )
 
@@ -574,7 +565,7 @@ function dragndrop.HoverThink()
 	local y = gui.MouseY()
 
 	-- Hovering a different panel
-	if ( LastHoverThink != hovered || x != LastX || y != LastY ) then
+	if ( LastHoverThink != hovered or x != LastX or y != LastY ) then
 
 		LastHoverChangeTime = SysTime()
 		LastHoverThink = hovered

@@ -30,9 +30,9 @@ function ENT:SetupDataTables()
 	self:NetworkVar( "String", 0, "StarTexture", { KeyName = "startexture", Edit = { type = "Texture", group = "Stars", category = "Stars", order = 11 } } )
 
 	self:NetworkVar( "Int", 0, "StarLayers", { KeyName = "starlayers", Edit = { type = "Int", min = 1, max = 3, category = "Stars", order = 12 } } )
-	self:NetworkVarElement( "Angle", 0, 'p', "StarScale", { KeyName = "starscale", Edit = { type = "Float", min = 0, max = 5, category = "Stars", order = 13 } } )
-	self:NetworkVarElement( "Angle", 0, 'y', "StarFade", { KeyName = "starfade", Edit = { type = "Float", min = 0, max = 5, category = "Stars", order = 14 } } )
-	self:NetworkVarElement( "Angle", 0, 'r', "StarSpeed", { KeyName = "starspeed", Edit = { type = "Float", min = 0, max = 2, category = "Stars", order = 15 } } )
+	self:NetworkVarElement( "Angle", 0, "p", "StarScale", { KeyName = "starscale", Edit = { type = "Float", min = 0, max = 5, category = "Stars", order = 13 } } )
+	self:NetworkVarElement( "Angle", 0, "y", "StarFade", { KeyName = "starfade", Edit = { type = "Float", min = 0, max = 5, category = "Stars", order = 14 } } )
+	self:NetworkVarElement( "Angle", 0, "r", "StarSpeed", { KeyName = "starspeed", Edit = { type = "Float", min = 0, max = 2, category = "Stars", order = 15 } } )
 
 	self:NetworkVar( "Float", 1, "HDRScale", { KeyName = "hdrscale", Edit = { type = "Float", category = "Main", min = 0, max = 1, order = 4 } } )
 
@@ -44,7 +44,6 @@ function ENT:SetupDataTables()
 		self:SetTopColor( Vector( 0.2, 0.5, 1.0 ) )
 		self:SetBottomColor( Vector( 0.8, 1.0, 1.0 ) )
 		self:SetFadeBias( 1 )
-
 
 		self:SetSunNormal( Vector( 0.4, 0.0, 0.01 ) )
 		self:SetSunColor( Vector( 0.2, 0.1, 0.0 ) )
@@ -70,15 +69,28 @@ end
 function ENT:Initialize()
 end
 
-function ENT:KeyValue( key, value )
+if ( SERVER ) then
 
-	if ( self:SetNetworkKeyValue( key, value ) ) then
-		return
+	function ENT:KeyValue( key, value )
+
+		if ( self:SetNetworkKeyValue( key, value ) ) then
+			return
+		end
+
+		-- TODO: sunposmethod
+		-- 		0 : "Custom - Use the Sun Normal to position the sun"
+		--		1 : "Automatic - Find a env_sun entity and use that"
+
 	end
 
-	-- TODO: sunposmethod
-	-- 		0 : "Custom - Use the Sun Normal to position the sun"
-	--		1 : "Automatic - Find a env_sun entity and use that"
+
+	function ENT:AcceptInput( name, activator, caller, data )
+
+		if ( self:SetNetworkVarsFromMapInput( name, data ) ) then
+			return true -- Accept the input so the there are no warnings in console with developer 2
+		end
+
+	end
 
 end
 
@@ -92,9 +104,9 @@ function ENT:Think()
 		-- so this closure only gets called once - even if it fails
 		self.EnvSun = false
 
-		local list = ents.FindByClass( "env_sun" )
-		if ( #list > 0 ) then
-			self.EnvSun = list[1]
+		local sunlist = ents.FindByClass( "env_sun" )
+		if ( #sunlist > 0 ) then
+			self.EnvSun = sunlist[1]
 		end
 
 	end
@@ -115,11 +127,9 @@ function ENT:Think()
 	--
 	-- Become the active sky again if we're not already
 	--
-	if ( CLIENT && g_SkyPaint != self ) then
+	if ( CLIENT && g_SkyPaint != self && !IsValid( g_SkyPaint ) ) then
 
-		if ( !IsValid( g_SkyPaint ) ) then
-			g_SkyPaint = self
-		end
+		g_SkyPaint = self
 
 	end
 
@@ -130,6 +140,6 @@ end
 --
 function ENT:CanEditVariables( ply )
 
-	return ply:IsAdmin()
+	return ply:IsAdmin() || game.SinglePlayer()
 
 end

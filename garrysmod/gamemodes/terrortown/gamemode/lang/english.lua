@@ -1,6 +1,6 @@
 ---- English language strings
 
-local L = LANG.CreateLanguage("English")
+local L = LANG.CreateLanguage("English", "en")
 
 --- General text used in various places
 L.traitor    = "Traitor"
@@ -244,12 +244,12 @@ L.set_tips      = "Show gameplay tips at the bottom of the screen while spectati
 L.set_startpopup = "Start of round info popup duration"
 L.set_startpopup_tip = "When the round starts, a small popup appears at the bottom of your screen for a few seconds. Change the time it displays for here."
 
-L.set_cross_opacity   = "Ironsight crosshair opacity"
+L.set_cross_opacity   = "Opacity (iron sights)"
 L.set_cross_disable   = "Disable crosshair completely"
 L.set_minimal_id      = "Minimalist Target ID under crosshair (no karma text, hints, etc)"
 L.set_healthlabel     = "Show health status label on health bar"
-L.set_lowsights       = "Lower weapon when using ironsights"
-L.set_lowsights_tip   = "Enable to position the weapon model lower on the screen while using ironsights. This will make it easier to see your target, but it will look less realistic."
+L.set_lowsights       = "Lower weapon when using iron sights"
+L.set_lowsights_tip   = "Enable to position the weapon model lower on the screen while using iron sights. This will make it easier to see your target, but it will look less realistic."
 L.set_fastsw          = "Fast weapon switch"
 L.set_fastsw_tip      = "Enable to cycle through weapons without having to click again to use weapon. Enable show menu to show switcher menu."
 L.set_fastsw_menu     = "Enable menu with fast weapon switch"
@@ -391,7 +391,7 @@ sound.]]
 
 -- Health station
 L.hstation_name   = "Health Station"
-L.hstation_hint   = "Press {usekey} to receive health. Charge: {num}."
+L.hstation_hint   = "Hold {usekey} to receive health. Charge: {num}."
 L.hstation_broken = "Your Health Station has been destroyed!"
 L.hstation_help   = "{primaryfire} places the Health Station."
 
@@ -592,7 +592,7 @@ L.target_credits = "Search to receive unspent credits"
 -- Traitor buttons (HUD buttons with hand icons that only traitors can see)
 L.tbut_single  = "Single use"
 L.tbut_reuse   = "Reusable"
-L.tbut_retime  = "Reusable after {num} sec"
+L.tbut_retime  = "Reusable after {num} seconds"
 L.tbut_help    = "Press {key} to activate"
 
 -- Equipment info lines (on the left above the health/ammo panel)
@@ -705,7 +705,7 @@ L.tip19 = "As Detective, if you have leftover credits you could give a trusted I
 
 L.tip20 = "The Detectives' Binoculars allow long-range searching and identifying of corpses. Bad news if the Traitors were hoping to use a corpse as bait. Of course, while using the Binoculars a Detective is unarmed and distracted..."
 
-L.tip21 =  "The Detectives' Health Station lets wounded players recover. Of course, those wounded people could be Traitors..."
+L.tip21 = "The Detectives' Health Station lets wounded players recover. Of course, those wounded people could be Traitors..."
 
 L.tip22 = "The Health Station records a DNA sample of everyone who uses it. Detectives can use this with the DNA Scanner to find out who has been healing up."
 
@@ -729,7 +729,7 @@ L.tip31 = "As Spectator, press {duckkey} to unlock your mouse cursor and click t
 
 L.tip32 = "The Crowbar's secondary fire will push other players."
 
-L.tip33 = "Firing through the ironsights of a weapon will slightly increase your accuracy and decrease recoil. Crouching does not."
+L.tip33 = "Firing through the iron sights of a weapon will slightly increase your accuracy and decrease recoil. Crouching does not."
 
 L.tip34 = "Smoke grenades are effective indoors, especially for creating confusion in crowded rooms."
 
@@ -744,7 +744,6 @@ L.tip38 = "Many of the placeable equipment items (such as C4, Radio) can be stuc
 L.tip39 = "C4 that explodes due to a mistake in disarming it has a smaller explosion than C4 that reaches zero on its timer."
 
 L.tip40 = "If it says 'HASTE MODE' above the round timer, the round will at first be only a few minutes long, but with every death the available time increases (like capturing a point in TF2). This mode puts the pressure on the traitors to keep things moving."
-
 
 --- Round report
 
@@ -1040,7 +1039,7 @@ L.aw_tod2_text  = "died right after the start of the round."
 
 
 --- New and modified pieces of text are placed below this point, marked with the
---- version in which they were added, to make updating translations easier.
+--- version or the date in which they were added, to make updating translations easier.
 
 
 --- v23
@@ -1051,11 +1050,91 @@ L.set_avoid_det_tip = "Enable this to ask the server not to select you as Detect
 L.drop_no_ammo = "Insufficient ammo in your weapon's clip to drop as an ammo box."
 
 --- v31
-L.set_cross_brightness = "Crosshair brightness"
-L.set_cross_size = "Crosshair size"
+L.set_cross_brightness = "Brightness"
+L.set_cross_size = "Size"
 
---- 5-25-15
+--- 2015-05-25
 L.hat_retrieve = "You picked up a Detective's hat."
 
---- 3-9-2017
+--- 2017-03-09
 L.sb_sortby = "Sort By:"
+
+--- 2018-07-24
+L.equip_tooltip_main = "Equipment menu"
+L.equip_tooltip_radar = "Radar control"
+L.equip_tooltip_disguise = "Disguise control"
+L.equip_tooltip_radio = "Radio control"
+L.equip_tooltip_xfer = "Transfer credits"
+
+L.confgrenade_name = "Discombobulator"
+L.polter_name = "Poltergeist"
+L.stungun_name = "UMP Prototype"
+
+L.knife_instant = "INSTANT KILL"
+
+L.dna_hud_type = "TYPE"
+L.dna_hud_body = "BODY"
+L.dna_hud_item = "ITEM"
+
+L.binoc_zoom_level = "LEVEL"
+L.binoc_body = "BODY DETECTED"
+
+L.idle_popup_title = "Idle"
+
+--- 2021-06-07
+L.sb_playervolume = "Player Volume"
+
+--- 2021-09-22
+L.tip41 = "You can adjust a player's microphone volume by right-clicking their mute icon in the scoreboard."
+
+--- 2023-07-28
+L.set_msg_cue = "Play sound cue when a notification appears"
+
+--- 2025-03-11
+L.set_title_cross = "Crosshair settings"
+
+L.set_cross_color_enable = "Enable custom color"
+L.set_cross_color = "Custom color"
+L.set_hip_cross_opacity = "Opacity"
+L.set_cross_thickness = "Thickness"
+L.set_cross_outlinethickness = "Outline thickness"
+
+--- 2025-09-04
+L.radio_button_glock  = "Glock shots"
+L.radio_button_sipist = "Silenced shots"
+L.radio_button_tele   = "Teleport"
+L.radio_button_heal   = "Healing"
+
+--- 2026-02-27
+L.dead         = "Dead"
+L.disconnected = "Disconnected"
+
+L.words_suicide = "kills self"
+L.words_fall    = "SPLUT"
+L.words_burn    = "crackle"
+
+L.ev_win_traitor_tip = "Traitors won"
+L.ev_win_inno_tip = "Innocents won"
+L.ev_win_time_tip = "Timelimit"
+
+L.ev_start_tip = "Game"
+L.ev_credit_tip = "Credit found"
+L.ev_body_tip = "Body discovered"
+
+L.ev_c4_disarm_tip = "C4 disarm"
+L.ev_c4_boom_tip = "C4 exploded"
+L.ev_c4_plant_tip = "C4 planted"
+
+L.ev_suicide = "Suicide"
+L.ev_teamkill = "Teamkill"
+L.ev_t_killed_i = "Traitor killed innocent"
+L.ev_i_killed_t = "Innocent killed traitor"
+
+-- 2026-03-11
+L.equip_sort_default = "Default"
+L.equip_sort_slot    = "Slot"
+
+L.set_hide_unbuyable = "Move unbuyable equipment items to the bottom of the list"
+
+-- 2026-07-24
+L.flame_burn = "FIRE! IT BURNS!"

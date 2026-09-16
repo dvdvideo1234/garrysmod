@@ -18,10 +18,11 @@ local function CreateWangFunction( self, colindex )
 	local function OnValueChanged( ptxt, strvar )
 		if ( ptxt.notuserchange ) then return end
 
-		self:GetColor()[ colindex ] = tonumber( strvar ) or 0
+		local targetValue = tonumber( strvar ) or 0
+		self:GetColor()[ colindex ] = targetValue
 		if ( colindex == "a" ) then
 			self.Alpha:SetBarColor( ColorAlpha( self:GetColor(), 255 ) )
-			self.Alpha:SetValue( self:GetColor().a / 255 )
+			self.Alpha:SetValue( targetValue / 255 )
 		else
 			self.HSV:SetColor( self:GetColor() )
 
@@ -44,12 +45,13 @@ function PANEL:Init()
 	self.Palette:DockMargin( 0, 8, 0, 0 )
 	self.Palette:Reset()
 	self.Palette.DoClick = function( ctrl, color, btn )
-		self:SetColor( Color( color.r, color.g, color.b, self:GetAlphaBar() && color.a or 255 ) )
+		self:SetColor( Color( color.r, color.g, color.b, self:GetAlphaBar() and color.a or 255 ) )
 	end
 	self.Palette.OnRightClickButton = function( ctrl, btn )
 		local m = DermaMenu()
-		m:AddOption( "Save Color", function() ctrl:SaveColor( btn, self:GetColor() ) end )
-		m:AddOption( "Reset Palette", function() ctrl:ResetSavedColors() end )
+		-- TODO: Find a way to let the player know which palette(s) are going to be affected
+		m:AddOption( "#spawnmenu.menu.save_palette", function() ctrl:SaveColor( btn, self:GetColor() ) end ):SetIcon( "icon16/disk.png" )
+		m:AddOption( "#spawnmenu.menu.reset_palette", function() ctrl:ResetSavedColors() end ):SetIcon( "icon16/arrow_rotate_clockwise.png" )
 		m:Open()
 	end
 	self:SetPalette( true )
@@ -136,6 +138,8 @@ function PANEL:Init()
 	self:SetSize( 256, 230 )
 	self:InvalidateLayout()
 
+	self.NextConVarCheck = 0
+
 end
 
 function PANEL:SetLabel( text )
@@ -160,6 +164,14 @@ function PANEL:SetPalette( bEnabled )
 	self:InvalidateLayout()
 end
 
+function PANEL:SetPaletteName( name )
+	self.Palette:SetCookieName( name )
+
+	-- Load the palette colors. Is there a better way?
+	-- One that that does not create all the panels in DColorPalette:Init() regardless
+	self.Palette:Reset()
+end
+
 function PANEL:SetAlphaBar( bEnabled )
 	self.m_bAlpha = bEnabled
 
@@ -179,25 +191,60 @@ end
 
 function PANEL:SetConVarR( cvar )
 	self.m_ConVarR = cvar
+	self:UpdateDefaultColor()
 end
 
 function PANEL:SetConVarG( cvar )
 	self.m_ConVarG = cvar
+	self:UpdateDefaultColor()
 end
 
 function PANEL:SetConVarB( cvar )
 	self.m_ConVarB = cvar
+	self:UpdateDefaultColor()
 end
 
 function PANEL:SetConVarA( cvar )
 	self.m_ConVarA = cvar
 	self:SetAlphaBar( cvar != nil )
+	self:UpdateDefaultColor()
 end
 
-function PANEL:PerformLayout( x, y )
+function PANEL:UpdateDefaultColor()
 
-	local h, s, v = ColorToHSV( self.HSV:GetBaseRGB() )
-	self.RGB.LastY = ( 1 - h / 360 ) * self.RGB:GetTall()
+	local function GetConVarDefault( str )
+		if ( str and GetConVar( str ) ) then return tonumber( GetConVar( str ):GetDefault() ) end
+		return 255
+	end
+
+	local defRGB = Color(
+		GetConVarDefault( self.m_ConVarR ),
+		GetConVarDefault( self.m_ConVarG ),
+		GetConVarDefault( self.m_ConVarB ),
+		GetConVarDefault( self.m_ConVarA )
+	)
+
+	self.HSV:SetDefaultColor( defRGB )
+
+	-- Allow immediate read of convar values
+	self.NextConVarCheck = 0
+end
+
+function PANEL:PerformLayout( w, h )
+
+	local hue, s, v = ColorToHSV( self.HSV:GetBaseRGB() )
+	self.RGB.LastY = ( 1 - hue / 360 ) * self.RGB:GetTall()
+
+	-- Figure out perfect row count to fit buttons exactly and pad the palette to center it
+	local buttons = #self.Palette:GetChildren()
+	local buttonSize = self.Palette:GetButtonSize()
+	local btnsPerRow = math.floor( w / buttonSize )
+	local rows = math.ceil( buttons / btnsPerRow )
+	local idealWidth = math.ceil( buttons / rows ) * buttonSize -- This is not ideal
+
+	--self.Palette:SetWide( idealWidth )
+	local leftPad = math.floor( ( w - idealWidth ) * 0.5 )
+	self.Palette:DockMargin( leftPad, 8, leftPad, 0 )
 
 end
 
@@ -205,13 +252,10 @@ function PANEL:Paint()
 	-- Invisible background!
 end
 
-function PANEL:TranslateValues( x, y )
-end
-
 function PANEL:SetColor( color )
 
-	local h, s, v = ColorToHSV( color )
-	self.RGB.LastY = ( 1 - h / 360 ) * self.RGB:GetTall()
+	local hue, s, v = ColorToHSV( color )
+	self.RGB.LastY = ( 1 - hue / 360 ) * self.RGB:GetTall()
 
 	self.HSV:SetColor( color )
 
@@ -221,7 +265,7 @@ end
 
 function PANEL:SetVector( vec )
 
-	self:SetColor( Color( vec.x * 255, vec.y * 255, vec.z * 255, 255 ) )
+	self:SetColor( vec:ToColor() )
 
 end
 
@@ -243,10 +287,10 @@ function PANEL:UpdateConVars( color )
 
 	self.NextConVarCheck = SysTime() + 0.2
 
-	self:UpdateConVar( self.m_ConVarR, 'r', color )
-	self:UpdateConVar( self.m_ConVarG, 'g', color )
-	self:UpdateConVar( self.m_ConVarB, 'b', color )
-	self:UpdateConVar( self.m_ConVarA, 'a', color )
+	self:UpdateConVar( self.m_ConVarR, "r", color )
+	self:UpdateConVar( self.m_ConVarG, "g", color )
+	self:UpdateConVar( self.m_ConVarB, "b", color )
+	self:UpdateConVar( self.m_ConVarA, "a", color )
 
 end
 
@@ -279,10 +323,10 @@ function PANEL:UpdateColor( color )
 		self.txtA.notuserchange = nil
 	end
 
+	self.m_Color = color
+
 	self:UpdateConVars( color )
 	self:ValueChanged( color )
-
-	self.m_Color = color
 
 end
 
@@ -326,7 +370,7 @@ function PANEL:ConVarThink()
 	local a, changed_a = 255, false
 
 	if ( self.m_ConVarA ) then
-		a, changed_a = self:DoConVarThink( self.m_ConVarA, "a" )
+		a, changed_a = self:DoConVarThink( self.m_ConVarA )
 	end
 
 	if ( changed_r or changed_g or changed_b or changed_a ) then
@@ -337,11 +381,11 @@ end
 
 function PANEL:DoConVarThink( convar )
 
-	if ( !convar ) then return end
+	if ( !convar ) then return 255, false end
 
 	local fValue = GetConVarNumber( convar )
 	local fOldValue = self[ "ConVarOld" .. convar ]
-	if ( fOldValue && fValue == fOldValue ) then return fOldValue, false end
+	if ( fOldValue and fValue == fOldValue ) then return fOldValue, false end
 
 	self[ "ConVarOld" .. convar ] = fValue
 

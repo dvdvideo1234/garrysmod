@@ -1,7 +1,7 @@
 ---- Test/gimmick lang
 -- Not an example of how you should translate something. See english.lua for that.
 
-local L = LANG.CreateLanguage("Swedish chef")
+local L = LANG.CreateLanguage("Swedish chef", "chef")
 
 local gsub = string.gsub
 
@@ -21,6 +21,8 @@ local function LanguageChanged(old, new)
 
    local eng = LANG.GetUnsafeNamed("english")
    for k, v in pairs(eng) do
+      if k == "language_name" then continue end
+
       L[k] = gsub(v, "[{}%w]+", Borkify)
    end
 
@@ -34,7 +36,7 @@ setmetatable(L,
              {
                 __index = function(t, k)
                              local w = GetFrom(k, "english") or "bork"
-                             
+
                              return gsub(w, "[{}%w]+", "BORK")
                           end
              })

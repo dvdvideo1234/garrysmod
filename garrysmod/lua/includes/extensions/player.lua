@@ -14,21 +14,20 @@ function meta:__index( key )
 	-- Search the metatable. We can do this without dipping into C, so we do it first.
 	--
 	local val = meta[key]
-	if ( val != nil ) then return val end
+	if ( val ~= nil ) then return val end
 
 	--
 	-- Search the entity metatable
 	--
-	local val = entity[key]
-	if ( val != nil ) then return val end
+	local entval = entity[key]
+	if ( entval ~= nil ) then return entval end
 
 	--
 	-- Search the entity table
 	--
 	local tab = entity.GetTable( self )
 	if ( tab ) then
-		local val = tab[ key ]
-		if ( val != nil ) then return val end
+		return tab[ key ]
 	end
 
 	return nil
@@ -38,53 +37,6 @@ end
 if ( !sql.TableExists( "playerpdata" ) ) then
 
 	sql.Query( "CREATE TABLE IF NOT EXISTS playerpdata ( infoid TEXT NOT NULL PRIMARY KEY, value TEXT );" )
-
-end
-
--- These are totally in the wrong place.
-function player.GetByUniqueID( ID )
-
-	for _, pl in pairs( player.GetAll() ) do
-
-		if ( pl:UniqueID() == ID ) then
-			return pl
-		end
-
-	end
-
-	return false
-
-end
-
-function player.GetBySteamID( ID )
-
-	ID = string.upper( ID )
-
-	for _, pl in pairs( player.GetAll() ) do
-
-		if ( pl:SteamID() == ID ) then
-			return pl
-		end
-
-	end
-
-	return false
-
-end
-
-function player.GetBySteamID64( ID )
-
-	ID = tostring( ID )
-
-	for _, pl in pairs( player.GetAll() ) do
-
-		if ( pl:SteamID64() == ID ) then
-			return pl
-		end
-
-	end
-
-	return false
 
 end
 
@@ -115,7 +67,7 @@ if ( CLIENT ) then
 
 	function meta:ConCommand( command, bSkipQueue )
 
-		if ( bSkipQueue ) then
+		if ( bSkipQueue or IsConCommandBlocked( command ) ) then
 			SendConCommand( self, command )
 		else
 			CommandList = CommandList or {}
@@ -144,7 +96,7 @@ if ( CLIENT ) then
 		end
 
 		-- Turn the table into a nil so we can return easy
-		if ( table.Count( CommandList ) == 0 ) then
+		if ( table.IsEmpty( CommandList ) ) then
 
 			CommandList = nil
 
@@ -162,9 +114,17 @@ end
 -----------------------------------------------------------]]
 function meta:GetPData( name, default )
 
-	name = Format( "%s[%s]", self:UniqueID(), name )
-	local val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( name ) .. " LIMIT 1" )
-	if ( val == nil ) then return default end
+	-- First try looking up using the new key
+	local key = Format( "%s[%s]", self:SteamID64(), name )
+	local val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( key ) .. " LIMIT 1" )
+	if ( val == nil ) then
+
+		-- Not found? Look using the old key
+		local oldkey = Format( "%s[%s]", self:UniqueID(), name )
+		val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) .. " LIMIT 1" )
+		if ( val == nil ) then return default end
+
+	end
 
 	return val
 
@@ -176,8 +136,12 @@ end
 -----------------------------------------------------------]]
 function meta:SetPData( name, value )
 
-	name = Format( "%s[%s]", self:UniqueID(), name )
-	sql.Query( "REPLACE INTO playerpdata ( infoid, value ) VALUES ( " .. SQLStr( name ) .. ", " .. SQLStr( value ) .. " )" )
+	-- Remove old value
+	local oldkey = Format( "%s[%s]", self:UniqueID(), name )
+	sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) )
+
+	local key = Format( "%s[%s]", self:SteamID64(), name )
+	return sql.Query( "REPLACE INTO playerpdata ( infoid, value ) VALUES ( " .. SQLStr( key ) .. ", " .. SQLStr( value ) .. " )" ) ~= false
 
 end
 
@@ -187,8 +151,15 @@ end
 -----------------------------------------------------------]]
 function meta:RemovePData( name )
 
-	name = Format( "%s[%s]", self:UniqueID(), name )
-	sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( name ) )
+	-- First old key
+	local oldkey = Format( "%s[%s]", self:UniqueID(), name )
+	local removed = sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) ) ~= false
+
+	-- Then new key
+	local key = Format( "%s[%s]", self:SteamID64(), name )
+	local removed2 = sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( key ) ) ~= false
+
+	return removed or removed2
 
 end
 
@@ -213,7 +184,7 @@ function meta:CanUseFlashlight() return self.m_bFlashlight == true end
 
 -- A function to set up player hands, so coders don't have to copy all the code everytime.
 -- Call this in PlayerSpawn hook
-function meta:SetupHands( ply )
+function meta:SetupHands( spec_ply )
 
 	local oldhands = self:GetHands()
 	if ( IsValid( oldhands ) ) then
@@ -222,7 +193,7 @@ function meta:SetupHands( ply )
 
 	local hands = ents.Create( "gmod_hands" )
 	if ( IsValid( hands ) ) then
-		hands:DoSetup( self, ply )
+		hands:DoSetup( self, spec_ply )
 		hands:Spawn()
 	end
 
@@ -288,4 +259,47 @@ function meta:HasGodMode()
 
 	return self:IsFlagSet( FL_GODMODE )
 
+end
+
+-- These are totally in the wrong place.
+function player.GetByAccountID( ID )
+	for _, pl in player.Iterator() do
+		if ( pl:AccountID() == ID ) then
+			return pl
+		end
+	end
+
+	return false
+end
+
+function player.GetByUniqueID( ID )
+	for _, pl in player.Iterator() do
+		if ( pl:UniqueID() == ID ) then
+			return pl
+		end
+	end
+
+	return false
+end
+
+function player.GetBySteamID( ID )
+	ID = string.upper( ID )
+
+	for _, pl in player.Iterator() do
+		if ( pl:SteamID() == ID ) then
+			return pl
+		end
+	end
+
+	return false
+end
+
+function player.GetBySteamID64( ID )
+	for _, pl in player.Iterator() do
+		if ( pl:SteamID64() == ID ) then
+			return pl
+		end
+	end
+
+	return false
 end

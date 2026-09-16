@@ -1,8 +1,7 @@
 
-local cl_drawspawneffect = CreateConVar( "cl_drawspawneffect", "1", { FCVAR_ARCHIVE } )
+local cl_drawspawneffect = CreateConVar( "cl_drawspawneffect", "1", { FCVAR_ARCHIVE }, "Whether to draw the spawn effect when spawning objects." )
 
 local matRefract = Material( "models/spawn_effect" )
-local matLight = Material( "models/spawn_effect2" )
 
 function EFFECT:Init( data )
 
@@ -24,8 +23,9 @@ function EFFECT:Init( data )
 	self:SetAngles( ent:GetAngles() )
 	self:SetParent( ent )
 
-	self.ParentEntity.RenderOverride = self.RenderParent
+	self.OldRenderOverride = self.ParentEntity.RenderOverride
 	self.ParentEntity.SpawnEffect = self
+	self.ParentEntity.RenderOverride = self.RenderParent
 
 
 end
@@ -36,13 +36,16 @@ function EFFECT:Think()
 	if ( !IsValid( self.ParentEntity ) ) then return false end
 
 	local PPos = self.ParentEntity:GetPos()
-	self:SetPos( PPos + ( EyePos() - PPos ):GetNormal() )
+	self:SetPos( PPos + ( EyePos() - PPos ):GetNormalized() )
 
 	if ( self.LifeTime > CurTime() ) then
 		return true
 	end
 
-	self.ParentEntity.RenderOverride = nil
+	-- Remove the override only if our override was not overridden.
+	if ( self.ParentEntity.RenderOverride == self.RenderParent ) then
+		self.ParentEntity.RenderOverride = self.OldRenderOverride
+	end
 	self.ParentEntity.SpawnEffect = nil
 
 	return false
@@ -52,16 +55,15 @@ end
 function EFFECT:Render()
 end
 
-function EFFECT:RenderOverlay( entity )
+function EFFECT:RenderOverlay( entity, flags )
 
 	local Fraction = ( self.LifeTime - CurTime() ) / self.Time
-	local ColFrac = ( Fraction - 0.5 ) * 2
-
 	Fraction = math.Clamp( Fraction, 0, 1 )
-	ColFrac = math.Clamp( ColFrac, 0, 1 )
 
 	-- Change our model's alpha so the texture will fade out
-	--entity:SetColor( 255, 255, 255, 1 + 254 * (ColFrac) )
+	--local ColFrac = ( Fraction - 0.5 ) * 2
+	--ColFrac = math.Clamp( ColFrac, 0, 1 )
+	--entity:SetColor( Color( 255, 255, 255, 1 + 254 * (ColFrac) ) )
 
 	-- Place the camera a tiny bit closer to the entity.
 	-- It will draw a big bigger and we will skip any z buffer problems
@@ -78,15 +80,15 @@ function EFFECT:RenderOverlay( entity )
 		-- If our card is DX8 or above draw the refraction effect
 		if ( render.GetDXLevel() >= 80 ) then
 
+			matRefract:SetFloat( "$refractamount", Fraction * 0.1 )
+
 			-- Update the refraction texture with whatever is drawn right now
 			render.UpdateRefractTexture()
 
-			matRefract:SetFloat( "$refractamount", Fraction * 0.1 )
-
 			-- Draw model with refraction texture
 			render.MaterialOverride( matRefract )
-				entity:DrawModel()
-			render.MaterialOverride( 0 )
+				entity:DrawModel( flags )
+			render.MaterialOverride()
 
 		end
 
@@ -97,26 +99,36 @@ function EFFECT:RenderOverlay( entity )
 
 end
 
-function EFFECT:RenderParent()
+function EFFECT:RenderParent( flags )
+
+	if ( !IsValid( self ) ) then return end
+	if ( !IsValid( self.SpawnEffect ) ) then self.RenderOverride = nil return end
 
 	local bClipping = self.SpawnEffect:StartClip( self, 1 )
 
-	self:DrawModel()
+	self:DrawModel( flags )
+
 	render.PopCustomClipPlane()
 	render.EnableClipping( bClipping )
 
-	self.SpawnEffect:RenderOverlay( self )
+	-- Do not draw some things during depth passes
+	local isDepthPass = ( bit.band( flags, STUDIO_SSAODEPTHTEXTURE ) != 0 || bit.band( flags, STUDIO_SHADOWDEPTHTEXTURE ) != 0 )
+	local shouldDraw = bit.band( flags, STUDIO_RENDER ) != 0 -- Can happen with parented entities. Still call DrawModel, but not MaterialOverride
+
+	if ( shouldDraw && !isDepthPass ) then
+		self.SpawnEffect:RenderOverlay( self, flags )
+	end
 
 end
 
 function EFFECT:StartClip( model, spd )
 
 	local mn, mx = model:GetRenderBounds()
-	local Up = ( mx - mn ):GetNormal()
+	local Up = ( mx - mn ):GetNormalized()
 	local Bottom = model:GetPos() + mn
 	local Top = model:GetPos() + mx
 
-	local Fraction = (self.LifeTime - CurTime()) / self.Time
+	local Fraction = ( self.LifeTime - CurTime() ) / self.Time
 	Fraction = math.Clamp( Fraction / spd, 0, 1 )
 
 	local Lerped = LerpVector( Fraction, Bottom, Top )

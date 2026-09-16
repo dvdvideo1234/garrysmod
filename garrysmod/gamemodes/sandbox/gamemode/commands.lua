@@ -1,65 +1,147 @@
 
 include( "prop_tools.lua" )
 
---[[---------------------------------------------------------
-	Name: CCSpawn
-	Desc: Console Command for a player to spawn different items
------------------------------------------------------------]]
-function CCSpawn( player, command, arguments )
+-- A little hacky function to help prevent spawning props partially inside walls
+-- Maybe it should use physics object bounds, not OBB, and use physics object bounds to initial position too
+local function fixupProp( ply, ent, hitpos, mins, maxs )
+	local entPos = ent:GetPos()
+	local endposD = ent:LocalToWorld( mins )
+	local tr_down = util.TraceLine( {
+		start = entPos,
+		endpos = endposD,
+		filter = { ent, ply }
+	} )
 
-	if ( arguments[ 1 ] == nil ) then return end
-	if ( arguments[ 1 ]:find( "%.[/\\]" ) ) then return end
+	local endposU = ent:LocalToWorld( maxs )
+	local tr_up = util.TraceLine( {
+		start = entPos,
+		endpos = endposU,
+		filter = { ent, ply }
+	} )
+
+	-- Both traces hit meaning we are probably inside a wall on both sides, do nothing
+	if ( tr_up.Hit && tr_down.Hit ) then return end
+
+	if ( tr_down.Hit ) then ent:SetPos( entPos + ( tr_down.HitPos - endposD ) ) end
+	if ( tr_up.Hit ) then ent:SetPos( entPos + ( tr_up.HitPos - endposU ) ) end
+end
+
+local function TryFixPropPosition( ply, ent, hitpos )
+	fixupProp( ply, ent, hitpos, Vector( ent:OBBMins().x, 0, 0 ), Vector( ent:OBBMaxs().x, 0, 0 ) )
+	fixupProp( ply, ent, hitpos, Vector( 0, ent:OBBMins().y, 0 ), Vector( 0, ent:OBBMaxs().y, 0 ) )
+	fixupProp( ply, ent, hitpos, Vector( 0, 0, ent:OBBMins().z ), Vector( 0, 0, ent:OBBMaxs().z ) )
+end
+
+local function GetSpawnTrace( ply )
+	local vStart = ply:GetShootPos()
+	local vForward = ply:EyeAngles():Forward() -- Ignores world clicker
+
+	local trace = {}
+	trace.start = vStart
+	trace.endpos = vStart + ( vForward * 2048 )
+	trace.filter = { ply, ply:GetVehicle() }
+
+	return util.TraceLine( trace )
+end
+
+local function ReportErrorToPlayer( player, error )
+	if ( IsValid( player ) ) then
+		if ( error == "hook" && player.__lastLimitHitTime && engine.TickCount() == player.__lastLimitHitTime ) then return end
+
+		--player:ChatPrint( "#spawnmenu.error." .. error )
+		player:SendLua( [[GAMEMODE:AddNotify( "#spawnmenu.error.]] .. error .. [[", NOTIFY_ERROR, 4 ) surface.PlaySound( "buttons/button10.wav" )]] )
+	end
+end
+
+local function Spawn_SandboxModel( ply, modelName, iSkin, strBody, traceOverride )
+
+	-- We don't support this command from dedicated server console
+	if ( !IsValid( ply ) ) then return end
+
+	-- Player is dead, don't allow them to spam stuff
+	if ( not ply:Alive() and not ply:IsAdmin() ) then ReportErrorToPlayer( ply, "dead" ) return end
+
+	-- Make sure the model path is valid
+	if ( modelName == nil ) then ReportErrorToPlayer( ply, "bad_model" ) return end
+	if ( modelName:find( "%.[/\\]" ) ) then ReportErrorToPlayer( ply, "bad_model" ) return end
 
 	-- Clean up the path from attempted blacklist bypasses
-	arguments[ 1 ] = arguments[ 1 ]:gsub( "\\\\+", "/" )
-	arguments[ 1 ] = arguments[ 1 ]:gsub( "//+", "/" )
-	arguments[ 1 ] = arguments[ 1 ]:gsub( "\\/+", "/" )
-	arguments[ 1 ] = arguments[ 1 ]:gsub( "/\\+", "/" )
+	modelName = modelName:gsub( "\\\\+", "/" )
+	modelName = modelName:gsub( "//+", "/" )
+	modelName = modelName:gsub( "\\/+", "/" )
+	modelName = modelName:gsub( "/\\+", "/" )
 
-	if ( !gamemode.Call( "PlayerSpawnObject", player, arguments[ 1 ], arguments[ 2 ] ) ) then return end
-	if ( !util.IsValidModel( arguments[ 1 ] ) ) then return end
+	-- Cleanup for checks below
+	modelName = modelName:lower()
+	modelName = modelName:gsub( "\\+", "/" )
 
-	local iSkin = tonumber( arguments[ 2 ] ) or 0
-	local strBody = arguments[ 3 ] or nil
+	-- Only models are allowed
+	if ( !modelName:StartsWith( "models/" ) || !modelName:EndsWith( ".mdl" ) ) then ReportErrorToPlayer( ply, "bad_model" ) return end
 
-	if ( util.IsValidProp( arguments[ 1 ] ) ) then
+	-- Make sure the model is valid
+	if ( !util.IsValidModel( modelName ) ) then ReportErrorToPlayer( ply, "bad_model" ) return end
 
-		GMODSpawnProp( player, arguments[ 1 ], iSkin, strBody )
+	-- Give the gamemode an opportunity to prevent spawning
+	-- TODO: Give strBody to the hook as well?
+	if ( !gamemode.Call( "PlayerSpawnObject", ply, modelName, iSkin ) ) then ReportErrorToPlayer( ply, "hook" ) return end
+
+	if ( util.IsValidProp( modelName ) ) then
+
+		GMODSpawnProp( ply, modelName, iSkin, strBody, traceOverride )
 		return
 
 	end
 
-	if ( util.IsValidRagdoll( arguments[ 1 ] ) ) then
+	if ( util.IsValidRagdoll( modelName ) ) then
 
-		GMODSpawnRagdoll( player, arguments[ 1 ], iSkin, strBody )
+		GMODSpawnRagdoll( ply, modelName, iSkin, strBody, traceOverride )
 		return
 
 	end
 
 	-- Not a ragdoll or prop.. must be an 'effect' - spawn it as one
-	GMODSpawnEffect( player, arguments[ 1 ], iSkin, strBody )
+	GMODSpawnEffect( ply, modelName, iSkin, strBody, traceOverride )
 
 end
 
-local function MakeRagdoll( Player, Pos, Ang, Model, PhysicsObjects, Data )
 
-	if ( !gamemode.Call( "PlayerSpawnRagdoll", Player, Model ) ) then return end
 
-	local Ent = ents.Create( "prop_ragdoll" )
-	duplicator.DoGeneric( Ent, Data )
-	Ent:Spawn()
+--[[---------------------------------------------------------
+	Name: CCSpawn
+	Desc: Console Command for a player to spawn different items
+-----------------------------------------------------------]]
+function CCSpawn( ply, command, arguments, argumentsStr, traceOverride )
 
-	duplicator.DoGenericPhysics( Ent, Player, Data )
+	local iSkin = tonumber( arguments[ 2 ] ) or 0
+	local strBody = arguments[ 3 ] or nil
 
-	Ent:Activate()
+	Spawn_SandboxModel( ply, arguments[ 1 ], iSkin, strBody, traceOverride )
 
-	if ( IsValid( Player ) ) then
-		gamemode.Call( "PlayerSpawnedRagdoll", Player, Model, Ent )
+end
+concommand.Add( "gm_spawn", CCSpawn, nil, "Spawn sandbox props, ragdolls, and effects." )
+
+local function MakeRagdoll( ply, _, _, model, _, data )
+
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnRagdoll", ply, model ) ) then return end
+
+	local ent = ents.Create( "prop_ragdoll" )
+	if ( !IsValid( ent ) ) then return end -- Must've hit edict limit
+
+	duplicator.DoGeneric( ent, data )
+	ent:Spawn()
+
+	duplicator.DoGenericPhysics( ent, ply, data )
+
+	ent:Activate()
+
+	if ( IsValid( ply ) ) then
+		ent:SetCreator( ply )
+		gamemode.Call( "PlayerSpawnedRagdoll", ply, model, ent )
 	end
 
-	DoPropSpawnedEffect( Ent )
+	DoPropSpawnedEffect( ent )
 
-	return Ent
+	return ent
 
 end
 
@@ -69,90 +151,129 @@ duplicator.RegisterEntityClass( "prop_ragdoll", MakeRagdoll, "Pos", "Ang", "Mode
 --[[---------------------------------------------------------
 	Name: GMODSpawnRagdoll - player spawns a ragdoll
 -----------------------------------------------------------]]
-function GMODSpawnRagdoll( player, model, iSkin, strBody )
+function GMODSpawnRagdoll( ply, model, iSkin, strBody, tr )
 
-	if ( !gamemode.Call( "PlayerSpawnRagdoll", player, model ) ) then return end
-	local e = DoPlayerEntitySpawn( player, "prop_ragdoll", model, iSkin, strBody )
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnRagdoll", ply, model ) ) then ReportErrorToPlayer( ply, "hook" ) return end
 
-	if ( IsValid( player ) ) then
-		gamemode.Call( "PlayerSpawnedRagdoll", player, model, e )
+	local ragdoll = DoPlayerEntitySpawn( ply, "prop_ragdoll", model, iSkin, strBody, tr )
+	if ( !IsValid( ragdoll ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end -- Must've hit edict limit
+
+	if ( IsValid( ply ) ) then
+		gamemode.Call( "PlayerSpawnedRagdoll", ply, model, ragdoll )
 	end
 
-	DoPropSpawnedEffect( e )
+	DoPropSpawnedEffect( ragdoll )
 
-	undo.Create( "Ragdoll" )
-		undo.SetPlayer( player )
-		undo.AddEntity( e )
-	undo.Finish( "Ragdoll (" .. tostring( model ) .. ")" )
+	undo.Create( "prop_ragdoll" )
+		undo.SetPlayer( ply )
+		undo.AddEntity( ragdoll )
+	undo.Finish( "#prop_ragdoll (" .. tostring( model ) .. ")" )
 
-	player:AddCleanup( "ragdolls", e )
+	ply:AddCleanup( "ragdolls", ragdoll )
 
 end
 
-function MakeProp( Player, Pos, Ang, Model, PhysicsObjects, Data )
+function MakeProp( ply, pos, ang, model, _, data )
 
 	-- Uck.
-	Data.Pos = Pos
-	Data.Angle = Ang
-	Data.Model = Model
+	data.Pos = pos
+	data.Angle = ang
+	data.Model = model
 
 	-- Make sure this is allowed
-	if ( IsValid( Player ) && !gamemode.Call( "PlayerSpawnProp", Player, Model ) ) then return end
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnProp", ply, model ) ) then return end
 
-	local Prop = ents.Create( "prop_physics" )
-	duplicator.DoGeneric( Prop, Data )
-	Prop:Spawn()
+	local prop = ents.Create( "prop_physics" )
+	if ( !IsValid( prop ) ) then return end -- Must've hit edict limit
 
-	duplicator.DoGenericPhysics( Prop, Player, Data )
+	duplicator.DoGeneric( prop, data )
+	prop:Spawn()
+
+	duplicator.DoGenericPhysics( prop, ply, data )
 
 	-- Tell the gamemode we just spawned something
-	if ( IsValid( Player ) ) then
-		gamemode.Call( "PlayerSpawnedProp", Player, Model, Prop )
+	if ( IsValid( ply ) ) then
+		prop:SetCreator( ply )
+		gamemode.Call( "PlayerSpawnedProp", ply, model, prop )
 	end
 
-	FixInvalidPhysicsObject( Prop )
+	FixInvalidPhysicsObject( prop )
 
-	DoPropSpawnedEffect( Prop )
+	DoPropSpawnedEffect( prop )
 
-	return Prop
+	return prop
 
 end
 
 duplicator.RegisterEntityClass( "prop_physics", MakeProp, "Pos", "Ang", "Model", "PhysicsObjects", "Data" )
 duplicator.RegisterEntityClass( "prop_physics_multiplayer", MakeProp, "Pos", "Ang", "Model", "PhysicsObjects", "Data" )
 
+function MakeEffect( ply, model, data )
+
+	data.Model = model
+
+	-- Make sure this is allowed
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnEffect", ply, model ) ) then return end
+
+	local prop = ents.Create( "prop_effect" )
+	if ( !IsValid( prop ) ) then return end -- Must've hit edict limit
+
+	duplicator.DoGeneric( prop, data )
+	if ( data.AttachedEntityInfo ) then
+		prop.AttachedEntityInfo = table.Copy( data.AttachedEntityInfo ) -- This shouldn't be neccesary
+	end
+	prop:Spawn()
+
+	-- duplicator.DoGenericPhysics( Prop, ply, Data )
+
+	-- Tell the gamemode we just spawned something
+	if ( IsValid( ply ) ) then
+		prop:SetCreator( ply )
+		gamemode.Call( "PlayerSpawnedEffect", ply, model, prop )
+	end
+
+	if ( IsValid( prop.AttachedEntity ) ) then
+		DoPropSpawnedEffect( prop.AttachedEntity )
+	end
+
+	return prop
+
+end
+
+duplicator.RegisterEntityClass( "prop_effect", MakeEffect, "Model", "Data" )
+
 --[[---------------------------------------------------------
 	Name: FixInvalidPhysicsObject
-			Attempts to detect and correct the physics object
-			on models such as the TF2 Turrets
+	Desc: Attempts to detect and correct the physics object
+	on models such as the TF2 Turrets
 -----------------------------------------------------------]]
-function FixInvalidPhysicsObject( Prop )
+function FixInvalidPhysicsObject( prop )
 
-	local PhysObj = Prop:GetPhysicsObject()
+	local PhysObj = prop:GetPhysicsObject()
 	if ( !IsValid( PhysObj ) ) then return end
 
 	local min, max = PhysObj:GetAABB()
-	if ( !min || !max ) then return end
+	if ( !min or !max ) then return end
 
-	local PhysSize = (min - max):Length()
+	local PhysSize = ( min - max ):Length()
 	if ( PhysSize > 5 ) then return end
 
-	local min = Prop:OBBMins()
-	local max = Prop:OBBMaxs()
-	if ( !min || !max ) then return end
+	local mins = prop:OBBMins()
+	local maxs = prop:OBBMaxs()
+	if ( !mins or !maxs ) then return end
 
-	local ModelSize = ( min - max ):Length()
+	local ModelSize = ( mins - maxs ):Length()
 	local Difference = math.abs( ModelSize - PhysSize )
 	if ( Difference < 10 ) then return end
 
 	-- This physics object is definitiely weird.
 	-- Make a new one.
+	prop:PhysicsInitBox( mins, maxs )
+	prop:SetCollisionGroup( COLLISION_GROUP_DEBRIS )
 
-	Prop:PhysicsInitBox( min, max )
-	Prop:SetCollisionGroup( COLLISION_GROUP_DEBRIS )
-
-	local PhysObj = Prop:GetPhysicsObject()
-	if ( !PhysObj ) then return end
+	-- Check for success
+	PhysObj = prop:GetPhysicsObject()
+	if ( !IsValid( PhysObj ) ) then return end
 
 	PhysObj:SetMass( 100 )
 	PhysObj:Wake()
@@ -160,16 +281,17 @@ function FixInvalidPhysicsObject( Prop )
 end
 
 --[[---------------------------------------------------------
-	Name: CCSpawnProp - player spawns a prop
+	Name: GMODSpawnProp - player spawns a prop
 -----------------------------------------------------------]]
-function GMODSpawnProp( player, model, iSkin, strBody )
+function GMODSpawnProp( ply, model, iSkin, strBody, tr )
 
-	if ( !gamemode.Call( "PlayerSpawnProp", player, model ) ) then return end
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnProp", ply, model ) ) then ReportErrorToPlayer( ply, "hook" ) return end
 
-	local e = DoPlayerEntitySpawn( player, "prop_physics", model, iSkin, strBody )
+	local e = DoPlayerEntitySpawn( ply, "prop_physics", model, iSkin, strBody, tr )
+	if ( !IsValid( e ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
 
-	if ( IsValid( player ) ) then
-		gamemode.Call( "PlayerSpawnedProp", player, model, e )
+	if ( IsValid( ply ) ) then
+		gamemode.Call( "PlayerSpawnedProp", ply, model, e )
 	end
 
 	-- This didn't work out - todo: Find a better way.
@@ -179,36 +301,39 @@ function GMODSpawnProp( player, model, iSkin, strBody )
 
 	DoPropSpawnedEffect( e )
 
-	undo.Create( "Prop" )
-		undo.SetPlayer( player )
+	undo.Create( "prop_physics" )
+		undo.SetPlayer( ply )
 		undo.AddEntity( e )
-	undo.Finish( "Prop (" .. tostring( model ) .. ")" )
+	undo.Finish( "#prop_physics (" .. tostring( model ) .. ")" )
 
-	player:AddCleanup( "props", e )
+	ply:AddCleanup( "props", e )
 
 end
 
 --[[---------------------------------------------------------
 	Name: GMODSpawnEffect
 -----------------------------------------------------------]]
-function GMODSpawnEffect( player, model, iSkin, strBody )
+function GMODSpawnEffect( ply, model, iSkin, strBody, tr )
 
-	if ( !gamemode.Call( "PlayerSpawnEffect", player, model ) ) then return end
-	local e = DoPlayerEntitySpawn( player, "prop_effect", model, iSkin, strBody )
-	if ( !IsValid( e ) ) then return end
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnEffect", ply, model ) ) then ReportErrorToPlayer( ply, "hook" ) return end
 
-	if ( IsValid( player ) ) then
-		gamemode.Call( "PlayerSpawnedEffect", player, model, e )
+	local e = DoPlayerEntitySpawn( ply, "prop_effect", model, iSkin, strBody, tr )
+	if ( !IsValid( e ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
+
+	if ( IsValid( ply ) ) then
+		gamemode.Call( "PlayerSpawnedEffect", ply, model, e )
 	end
 
-	DoPropSpawnedEffect( e )
+	if ( IsValid( e.AttachedEntity ) ) then
+		DoPropSpawnedEffect( e.AttachedEntity )
+	end
 
-	undo.Create( "Effect" )
-		undo.SetPlayer( player )
+	undo.Create( "prop_effect" )
+		undo.SetPlayer( ply )
 		undo.AddEntity( e )
-	undo.Finish( "Effect (" .. tostring( model ) .. ")" )
+	undo.Finish( "#prop_effect (" .. tostring( model ) .. ")" )
 
-	player:AddCleanup( "effects", e )
+	ply:AddCleanup( "effects", e )
 
 end
 
@@ -216,48 +341,44 @@ end
 	Name: DoPlayerEntitySpawn
 	Desc: Utility function for player entity spawning functions
 -----------------------------------------------------------]]
-function DoPlayerEntitySpawn( player, entity_name, model, iSkin, strBody )
+function DoPlayerEntitySpawn( ply, entity_name, model, iSkin, strBody, tr )
 
-	local vStart = player:GetShootPos()
-	local vForward = player:GetAimVector()
-
-	local trace = {}
-	trace.start = vStart
-	trace.endpos = vStart + (vForward * 2048)
-	trace.filter = player
-
-	local tr = util.TraceLine( trace )
+	if ( !tr ) then tr = GetSpawnTrace( ply ) end
 
 	-- Prevent spawning too close
-	--[[if ( !tr.Hit || tr.Fraction < 0.05 ) then
+	--[[if ( !tr.Hit or tr.Fraction < 0.05 ) then
 		return
 	end]]
 
 	local ent = ents.Create( entity_name )
 	if ( !IsValid( ent ) ) then return end
 
-	local ang = player:EyeAngles()
+	local ang = ply:EyeAngles()
 	ang.yaw = ang.yaw + 180 -- Rotate it 180 degrees in my favour
 	ang.roll = 0
 	ang.pitch = 0
 
 	if ( entity_name == "prop_ragdoll" ) then
 		ang.pitch = -90
-		tr.HitPos = tr.HitPos
 	end
 
 	ent:SetModel( model )
 	ent:SetSkin( iSkin )
 	ent:SetAngles( ang )
-	ent:SetBodyGroups( strBody )
+	if ( strBody ) then ent:SetBodyGroups( strBody ) end
 	ent:SetPos( tr.HitPos )
+	ent:SetCreator( ply )
 	ent:Spawn()
 	ent:Activate()
+
+	-- Special case for effects
+	if ( strBody && entity_name == "prop_effect" && IsValid( ent.AttachedEntity ) ) then
+		ent.AttachedEntity:SetBodyGroups( strBody )
+	end
 
 	-- Attempt to move the object so it sits flush
 	-- We could do a TraceEntity instead of doing all
 	-- of this - but it feels off after the old way
-
 	local vFlushPoint = tr.HitPos - ( tr.HitNormal * 512 )	-- Find a point that is definitely out of the object in the direction of the floor
 	vFlushPoint = ent:NearestPoint( vFlushPoint )			-- Find the nearest point inside the object to that point
 	vFlushPoint = ent:GetPos() - vFlushPoint				-- Get the difference
@@ -267,7 +388,7 @@ function DoPlayerEntitySpawn( player, entity_name, model, iSkin, strBody )
 
 		-- Set new position
 		ent:SetPos( vFlushPoint )
-		player:SendLua( "achievements.SpawnedProp()" )
+		ply:SendLua( "achievements.SpawnedProp()" )
 
 	else
 
@@ -278,54 +399,56 @@ function DoPlayerEntitySpawn( player, entity_name, model, iSkin, strBody )
 			phys:SetPos( phys:GetPos() + VecOffset )
 		end
 
-		player:SendLua( "achievements.SpawnedRagdoll()" )
+		ply:SendLua( "achievements.SpawnedRagdoll()" )
 
 	end
+
+	TryFixPropPosition( ply, ent, tr.HitPos )
 
 	return ent
 
 end
-concommand.Add( "gm_spawn", CCSpawn, nil, "Spawns props/ragdolls" )
 
-local function InternalSpawnNPC( Player, Position, Normal, Class, Equipment, SpawnFlagsSaved, NoDropToFloor )
-
-	local NPCList = list.Get( "NPC" )
-	local NPCData = NPCList[ Class ]
+local function InternalSpawnNPC( NPCData, ply, Position, Normal, Class, Equipment, SpawnFlagsSaved, NoDropToFloor )
 
 	-- Don't let them spawn this entity if it isn't in our NPC Spawn list.
 	-- We don't want them spawning any entity they like!
-	if ( !NPCData ) then
-		if ( IsValid( Player ) ) then
-			Player:SendLua( "Derma_Message( \"Sorry! You can't spawn that NPC!\" )" )
-		end
-		return
-	end
+	if ( !NPCData ) then return NULL end
 
-	if ( NPCData.AdminOnly && !Player:IsAdmin() ) then return end
+	local isAdmin = ( IsValid( ply ) && ply:IsAdmin() ) or game.SinglePlayer()
+	if ( NPCData.AdminOnly && !isAdmin ) then return NULL end
 
 	local bDropToFloor = false
+	local wasSpawnedOnCeiling = false
+	local wasSpawnedOnFloor = false
 
 	--
-	-- This NPC has to be spawned on a ceiling ( Barnacle )
+	-- This NPC has to be spawned on a ceiling (Barnacle) or a floor (Turrets)
 	--
-	if ( NPCData.OnCeiling && Vector( 0, 0, -1 ):Dot( Normal ) < 0.95 ) then
-		return nil
-	end
+	if ( NPCData.OnCeiling or NPCData.OnFloor ) then
+		local isOnCeiling	= Vector( 0, 0, -1 ):Dot( Normal ) >= 0.95
+		local isOnFloor		= Vector( 0, 0,  1 ):Dot( Normal ) >= 0.95
 
-	--
-	-- This NPC has to be spawned on a floor ( Turrets )
-	--
-	if ( NPCData.OnFloor && Vector( 0, 0, 1 ):Dot( Normal ) < 0.95 ) then
-		return nil
+		-- Not on ceiling, and we can't be on floor
+		if ( !isOnCeiling && !NPCData.OnFloor ) then return NULL end
+
+		-- Not on floor, and we can't be on ceiling
+		if ( !isOnFloor && !NPCData.OnCeiling ) then return NULL end
+
+		-- We can be on either, and we are on neither
+		if ( !isOnFloor && !isOnCeiling ) then return NULL end
+
+		wasSpawnedOnCeiling = isOnCeiling
+		wasSpawnedOnFloor = isOnFloor
 	else
 		bDropToFloor = true
 	end
 
-	if ( NPCData.NoDrop || NoDropToFloor ) then bDropToFloor = false end
+	if ( NPCData.NoDrop or NoDropToFloor ) then bDropToFloor = false end
 
 	-- Create NPC
 	local NPC = ents.Create( NPCData.Class )
-	if ( !IsValid( NPC ) ) then return end
+	if ( !IsValid( NPC ) ) then return NULL end
 
 	--
 	-- Offset the position
@@ -336,8 +459,8 @@ local function InternalSpawnNPC( Player, Position, Normal, Class, Equipment, Spa
 	-- Rotate to face player (expected behaviour)
 	local Angles = Angle( 0, 0, 0 )
 
-	if ( IsValid( Player ) ) then
-		Angles = Player:GetAngles()
+	if ( IsValid( ply ) ) then
+		Angles = ply:GetAngles()
 	end
 
 	Angles.pitch = 0
@@ -348,15 +471,21 @@ local function InternalSpawnNPC( Player, Position, Normal, Class, Equipment, Spa
 
 	NPC:SetAngles( Angles )
 
-	--
-	-- This NPC has a special model we want to define
-	--
-	if ( NPCData.Model ) then
-		NPC:SetModel( NPCData.Model )
+	if ( NPCData.SnapToNormal ) then
+		NPC:SetAngles( Normal:Angle() )
 	end
 
 	--
-	-- This NPC has a special texture we want to define
+	-- Does this NPC have a specified model? If so, use it.
+	--
+	local NPCModel = NPCData.Model
+	if ( istable( NPCModel ) ) then NPCModel = NPCModel[ math.random( #NPCModel ) ] end
+	if ( NPCModel ) then
+		NPC:SetModel( NPCModel )
+	end
+
+	--
+	-- Does this NPC have a specified material? If so, use it.
 	--
 	if ( NPCData.Material ) then
 		NPC:SetMaterial( NPCData.Material )
@@ -375,27 +504,48 @@ local function InternalSpawnNPC( Player, Position, Normal, Class, Equipment, Spa
 	--
 	-- Optional Key Values
 	--
+	local squadName = nil
 	if ( NPCData.KeyValues ) then
 		for k, v in pairs( NPCData.KeyValues ) do
 			NPC:SetKeyValue( k, v )
+
+			if ( string.lower( k ) == "squadname" ) then squadName = v end
 		end
 	end
 
 	--
-	-- This NPC has a special skin we want to define
+	-- Handle squads being overflown.
+	--
+	local MAX_SQUAD_MEMBERS	= 16
+	if ( squadName and ai.GetSquadMemberCount( squadName ) >= MAX_SQUAD_MEMBERS ) then
+
+		-- Find first open squad
+		local sqNum = 0
+		while ( ai.GetSquadMemberCount( squadName .. sqNum ) >= MAX_SQUAD_MEMBERS ) do
+			sqNum = sqNum + 1
+		end
+
+		NPC:SetKeyValue( "SquadName", squadName .. sqNum )
+	end
+
+	--
+	-- Does this NPC have a specified skin? If so, use it.
 	--
 	if ( NPCData.Skin ) then
 		NPC:SetSkin( NPCData.Skin )
 	end
 
 	--
-	-- What weapon should this mother be carrying
+	-- What weapon this NPC should be carrying
 	--
 
-	-- Check if this is a valid entity from the list, or the user is trying to fool us.
+	-- Check if this is a valid weapon from the list, or the user is trying to fool us.
 	local valid = false
 	for _, v in pairs( list.Get( "NPCUsableWeapons" ) ) do
-		if v.class == Equipment then valid = true break end
+		if ( v.class == Equipment ) then valid = true break end
+	end
+	for _, v in pairs( NPCData.Weapons or {} ) do
+		if ( v == Equipment ) then valid = true break end
 	end
 
 	if ( Equipment && Equipment != "none" && valid ) then
@@ -403,106 +553,144 @@ local function InternalSpawnNPC( Player, Position, Normal, Class, Equipment, Spa
 		NPC.Equipment = Equipment
 	end
 
+	if ( wasSpawnedOnCeiling && isfunction( NPCData.OnCeiling ) ) then
+		NPCData.OnCeiling( NPC )
+	elseif ( wasSpawnedOnFloor && isfunction( NPCData.OnFloor ) ) then
+		NPCData.OnFloor( NPC )
+	end
+
+	-- Allow special case for duplicator stuff
+	if ( isfunction( NPCData.OnDuplicated ) ) then
+		NPC.OnDuplicated = NPCData.OnDuplicated
+	end
+
 	DoPropSpawnedEffect( NPC )
 
 	NPC:Spawn()
 	NPC:Activate()
 
-	if ( bDropToFloor && !NPCData.OnCeiling ) then
+	-- Store spawnmenu data for addons and stuff
+	NPC.NPCName = Class
+	NPC._wasSpawnedOnCeiling = wasSpawnedOnCeiling
+
+	-- For those NPCs that set their model/skin in Spawn function
+	-- We have to keep the call above for NPCs that want a model set by Spawn() time
+	-- BAD: They may adversly affect entity collision bounds
+	if ( NPCModel && NPC:GetModel():lower() != NPCModel:lower() ) then
+		NPC:SetModel( NPCModel )
+	end
+	if ( NPCData.Skin ) then
+		NPC:SetSkin( NPCData.Skin )
+	end
+
+	if ( bDropToFloor ) then
 		NPC:DropToFloor()
 	end
 
 	if ( NPCData.Health ) then
 		NPC:SetHealth( NPCData.Health )
+		NPC:SetMaxHealth( NPCData.Health )
+	end
+
+	-- Body groups
+	if ( NPCData.BodyGroups ) then
+		for k, v in pairs( NPCData.BodyGroups ) do
+			NPC:SetBodygroup( k, v )
+		end
 	end
 
 	return NPC
 
 end
 
-function Spawn_NPC( player, NPCClassName, WeaponName, tr )
+function Spawn_NPC( ply, NPCClassName, WeaponName, tr )
 
-	if ( !NPCClassName ) then return end
+	-- We don't support this command from dedicated server console
+	if ( !IsValid( ply ) ) then return end
+
+	-- Player is dead, don't allow them to spam stuff
+	if ( not ply:Alive() and not ply:IsAdmin() ) then ReportErrorToPlayer( ply, "dead" ) return end
+
+	if ( !NPCClassName ) then ReportErrorToPlayer( ply, "bad_npc" ) return end
 
 	-- Give the gamemode an opportunity to deny spawning
-	if ( !gamemode.Call( "PlayerSpawnNPC", player, NPCClassName, WeaponName ) ) then return end
+	if ( !gamemode.Call( "PlayerSpawnNPC", ply, NPCClassName, WeaponName ) ) then ReportErrorToPlayer( ply, "hook" ) return end
 
-	if ( !tr ) then
+	if ( !tr ) then tr = GetSpawnTrace( ply ) end
 
-		local vStart = player:GetShootPos()
-		local vForward = player:GetAimVector()
+	local NPCData = list.GetEntry( "NPC", NPCClassName )
 
-		local trace = {}
-		trace.start = vStart
-		trace.endpos = vStart + vForward * 2048
-		trace.filter = player
+	-- Create the NPC if you can.
+	local SpawnedNPC = InternalSpawnNPC( NPCData, ply, tr.HitPos, tr.HitNormal, NPCClassName, WeaponName )
+	if ( !IsValid( SpawnedNPC ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
 
-		tr = util.TraceLine( trace )
-
-	end
-
-	-- Create the NPC is you can.
-	local SpawnedNPC = InternalSpawnNPC( player, tr.HitPos, tr.HitNormal, NPCClassName, WeaponName )
-	if ( !IsValid( SpawnedNPC ) ) then return end
+	TryFixPropPosition( ply, SpawnedNPC, tr.HitPos )
 
 	-- Give the gamemode an opportunity to do whatever
-	if ( IsValid( player ) ) then
-		gamemode.Call( "PlayerSpawnedNPC", player, SpawnedNPC )
+	if ( IsValid( ply ) ) then
+		SpawnedNPC:SetCreator( ply )
+		gamemode.Call( "PlayerSpawnedNPC", ply, SpawnedNPC )
 	end
 
 	-- See if we can find a nice name for this NPC..
-	local NPCList = list.Get( "NPC" )
-	local NiceName = nil
-	if ( NPCList[ NPCClassName ] ) then
-		NiceName = NPCList[ NPCClassName ].Name
-	end
+	local NiceName = NPCClassName
+	if ( NPCData and NPCData.Name ) then NiceName = NPCData.Name end
 
 	-- Add to undo list
 	undo.Create( "NPC" )
-		undo.SetPlayer( player )
+		undo.SetPlayer( ply )
 		undo.AddEntity( SpawnedNPC )
 		if ( NiceName ) then
 			undo.SetCustomUndoText( "Undone " .. NiceName )
 		end
-	undo.Finish( "NPC (" .. tostring( NPCClassName ) .. ")" )
+	undo.Finish( "#undo.generic.npc (" .. tostring( NiceName ) .. ")" )
 
 	-- And cleanup
-	player:AddCleanup( "npcs", SpawnedNPC )
+	ply:AddCleanup( "npcs", SpawnedNPC )
 
-	player:SendLua( "achievements.SpawnedNPC()" )
+	ply:SendLua( "achievements.SpawnedNPC()" )
+
+	return SpawnedNPC
 
 end
-concommand.Add( "gmod_spawnnpc", function( ply, cmd, args ) Spawn_NPC( ply, args[ 1 ], args[ 2 ] ) end )
+concommand.Add( "gmod_spawnnpc", function( ply, cmd, args ) Spawn_NPC( ply, args[ 1 ], args[ 2 ] ) end, nil, "Spawn sandbox NPCs." )
 
 -- This should be in base_npcs.lua really
-local function GenericNPCDuplicator( ply, mdl, class, equipment, spawnflags, data )
+local function GenericNPCDuplicator( ply, class, equipment, spawnflags, data )
 
-	if ( !gamemode.Call( "PlayerSpawnNPC", ply, class, equipment ) ) then return end
+	-- Match the behavior of Spawn_NPC above - class should be the one in the list, NOT the entity class!
+	if ( data.NPCName ) then class = data.NPCName end
+
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnNPC", ply, class, equipment ) ) then return NULL end
+
+	local NPCData = list.GetEntry( "NPC", class )
 
 	local normal = Vector( 0, 0, 1 )
+	if ( NPCData && NPCData.OnCeiling && ( NPCData.OnFloor && data._wasSpawnedOnCeiling or !NPCData.OnFloor ) ) then
+		normal = Vector( 0, 0, -1 )
+	end
 
-	local NPCList = list.Get( "NPC" )
-	local NPCData = NPCList[ class ]
-	if ( NPCData && NPCData.OnCeiling ) then normal = Vector( 0, 0, -1 ) end
-
-	local ent = InternalSpawnNPC( ply, data.Pos, normal, class, equipment, spawnflags, true )
-
+	local ent = InternalSpawnNPC( NPCData, ply, data.Pos, normal, class, equipment, spawnflags, true )
 	if ( IsValid( ent ) ) then
-		local pos = ent:GetPos() -- Hack! Prevnets the NPCs from falling through the floor
+
+		local pos = ent:GetPos() -- Hack! Prevents the NPCs from falling through the floor
 
 		duplicator.DoGeneric( ent, data )
 
-		if ( !NPCData.OnCeiling ) then
+		if ( NPCData && !NPCData.OnCeiling && !NPCData.NoDrop ) then
 			ent:SetPos( pos )
-			ent:DropToFloor()
 		end
 
 		if ( IsValid( ply ) ) then
+			ent:SetCreator( ply )
 			gamemode.Call( "PlayerSpawnedNPC", ply, ent )
 			ply:AddCleanup( "npcs", ent )
 		end
 
-		table.Add( ent:GetTable(), data )
+		if ( data.CurHealth ) then ent:SetHealth( data.CurHealth ) end
+		if ( data.MaxHealth ) then ent:SetMaxHealth( data.MaxHealth ) end
+
+		table.Merge( ent:GetTable(), data )
 
 	end
 
@@ -510,104 +698,73 @@ local function GenericNPCDuplicator( ply, mdl, class, equipment, spawnflags, dat
 
 end
 
--- Huuuuuuuuhhhh
-local function AddNPCToDuplicator( class ) duplicator.RegisterEntityClass( class, GenericNPCDuplicator, "Model", "Class", "Equipment", "SpawnFlags", "Data" ) end
+-- Duplicator support for all base NPCs
+local NPCClassList = {
+	-- Half-Life 2
+	"npc_alyx", "npc_breen", "npc_kleiner",
+	"npc_antlion", "npc_antlionguard", "npc_barnacle",
+	"npc_barney", "npc_combine_s", "npc_crow", "npc_cscanner",
+	"npc_clawscanner", "npc_dog", "npc_eli", "npc_gman", "npc_headcrab",
+	"npc_headcrab_black", "npc_headcrab_poison","npc_headcrab_fast",
+	"npc_manhack", "npc_metropolice", "npc_monk", "npc_mossman",
+	"npc_pigeon", "npc_rollermine", "npc_strider",
+	"npc_helicopter", "npc_combinegunship", "npc_combinedropship",
+	"npc_turret_ceiling", "npc_combine_camera", "npc_turret_floor",
+	"npc_vortigaunt", "npc_sniper", "npc_seagull", "npc_citizen",
+	"npc_stalker", "npc_zombie", "npc_zombie_torso", "npc_zombine",
+	"npc_poisonzombie", "npc_fastzombie", "npc_fastzombie_torso",
 
--- HL2
-AddNPCToDuplicator( "npc_alyx" )
-AddNPCToDuplicator( "npc_magnusson" )
-AddNPCToDuplicator( "npc_breen" )
-AddNPCToDuplicator( "npc_kleiner" )
-AddNPCToDuplicator( "npc_antlion" )
-AddNPCToDuplicator( "npc_antlion_worker" )
-AddNPCToDuplicator( "npc_antlion_grub" )
-AddNPCToDuplicator( "npc_antlionguard" )
-AddNPCToDuplicator( "npc_barnacle" )
-AddNPCToDuplicator( "npc_barney" )
-AddNPCToDuplicator( "npc_combine_s" )
-AddNPCToDuplicator( "npc_crow" )
-AddNPCToDuplicator( "npc_cscanner" )
-AddNPCToDuplicator( "npc_clawscanner" )
-AddNPCToDuplicator( "npc_dog" )
-AddNPCToDuplicator( "npc_eli" )
-AddNPCToDuplicator( "npc_gman" )
-AddNPCToDuplicator( "npc_headcrab" )
-AddNPCToDuplicator( "npc_headcrab_black" )
-AddNPCToDuplicator( "npc_headcrab_poison" )
-AddNPCToDuplicator( "npc_headcrab_fast" )
-AddNPCToDuplicator( "npc_manhack" )
-AddNPCToDuplicator( "npc_metropolice" )
-AddNPCToDuplicator( "npc_monk" )
-AddNPCToDuplicator( "npc_mossman" )
-AddNPCToDuplicator( "npc_pigeon" )
-AddNPCToDuplicator( "npc_rollermine" )
-AddNPCToDuplicator( "npc_strider" )
-AddNPCToDuplicator( "npc_helicopter" )
-AddNPCToDuplicator( "npc_combinegunship" )
-AddNPCToDuplicator( "npc_combinedropship" )
-AddNPCToDuplicator( "npc_turret_ceiling" )
-AddNPCToDuplicator( "npc_combine_camera" )
-AddNPCToDuplicator( "npc_turret_floor" )
-AddNPCToDuplicator( "npc_vortigaunt" )
-AddNPCToDuplicator( "npc_hunter" )
-AddNPCToDuplicator( "npc_sniper" )
-AddNPCToDuplicator( "npc_seagull" )
-AddNPCToDuplicator( "npc_citizen" )
-AddNPCToDuplicator( "npc_stalker" )
-AddNPCToDuplicator( "npc_fisherman" )
-AddNPCToDuplicator( "npc_zombie" )
-AddNPCToDuplicator( "npc_zombie_torso" )
-AddNPCToDuplicator( "npc_zombine" )
-AddNPCToDuplicator( "npc_poisonzombie" )
-AddNPCToDuplicator( "npc_fastzombie" )
-AddNPCToDuplicator( "npc_fastzombie_torso" )
+	-- Episode 2
+	"npc_hunter", "npc_antlion_worker", "npc_antlion_grub", "npc_magnusson",
 
--- HL1
-AddNPCToDuplicator( "monster_alien_grunt" )
-AddNPCToDuplicator( "monster_alien_slave" )
-AddNPCToDuplicator( "monster_alien_controller" )
-AddNPCToDuplicator( "monster_barney" )
-AddNPCToDuplicator( "monster_bigmomma" )
-AddNPCToDuplicator( "monster_bullchicken" )
-AddNPCToDuplicator( "monster_babycrab" )
-AddNPCToDuplicator( "monster_cockroach" )
-AddNPCToDuplicator( "monster_houndeye" )
-AddNPCToDuplicator( "monster_headcrab" )
-AddNPCToDuplicator( "monster_gargantua" )
-AddNPCToDuplicator( "monster_human_assassin" )
-AddNPCToDuplicator( "monster_human_grunt" )
-AddNPCToDuplicator( "monster_scientist" )
-AddNPCToDuplicator( "monster_snark" )
-AddNPCToDuplicator( "monster_nihilanth" )
-AddNPCToDuplicator( "monster_tentacle" )
-AddNPCToDuplicator( "monster_zombie" )
+	-- Lost Coast
+	"npc_fisherman",
+
+	-- Half-Life Source
+	"monster_alien_grunt", "monster_alien_slave", "monster_alien_controller",
+	"monster_barney", "monster_bigmomma", "monster_bullchicken",
+	"monster_babycrab", "monster_cockroach", "monster_houndeye",
+	"monster_headcrab", "monster_gargantua", "monster_human_assassin",
+	"monster_human_grunt", "monster_scientist", "monster_snark",
+	"monster_nihilanth", "monster_tentacle", "monster_zombie",
+	"monster_turret", "monster_miniturret", "monster_sentry",
+
+	-- Portal
+	"npc_portal_turret_floor",
+	"npc_rocket_turret",
+	"npc_security_camera",
+}
+
+for _, v in ipairs( NPCClassList ) do
+	duplicator.RegisterEntityClass( v, GenericNPCDuplicator, "Class", "Equipment", "SpawnFlags", "Data" )
+end
 
 --[[---------------------------------------------------------
 	Name: CanPlayerSpawnSENT
 -----------------------------------------------------------]]
-local function CanPlayerSpawnSENT( player, EntityName )
+local function CanPlayerSpawnSENT( ply, EntityName )
 
-	-- Make sure this is a SWEP
+	local isAdmin = ( IsValid( ply ) && ply:IsAdmin() ) or game.SinglePlayer()
+
+	-- Make sure that given EntityName is actually a SENT
 	local sent = scripted_ents.GetStored( EntityName )
 	if ( sent == nil ) then
 
-		-- Is this in the SpawnableEntities list?
-		local SpawnableEntities = list.Get( "SpawnableEntities" )
-		if ( !SpawnableEntities ) then return false end
-		local EntTable = SpawnableEntities[ EntityName ]
-		if ( !EntTable ) then return false end
-		if ( EntTable.AdminOnly && !player:IsAdmin() ) then return false end
+		-- Is the entity spawnable?
+		local EntTable = list.GetEntry( "SpawnableEntities", EntityName )
+		if ( !EntTable ) then ReportErrorToPlayer( ply, "bad_sent" ) return false end
+		if ( EntTable.AdminOnly && !isAdmin ) then ReportErrorToPlayer( ply, "bad_sent" ) return false end
 		return true
 
 	end
 
 	-- We need a spawn function. The SENT can then spawn itself properly
 	local SpawnFunction = scripted_ents.GetMember( EntityName, "SpawnFunction" )
-	if ( !isfunction( SpawnFunction ) ) then return false end
+	if ( !isfunction( SpawnFunction ) ) then ReportErrorToPlayer( ply, "bad_sent" ) return false end
 
 	-- You're not allowed to spawn this unless you're an admin!
-	if ( !scripted_ents.GetMember( EntityName, "Spawnable" ) && !player:IsAdmin() ) then return false end
-	if ( scripted_ents.GetMember( EntityName, "AdminOnly" ) && !player:IsAdmin() ) then return false end
+	if ( !scripted_ents.GetMember( EntityName, "Spawnable" ) && !isAdmin ) then ReportErrorToPlayer( ply, "admin" )  return false end
+	if ( scripted_ents.GetMember( EntityName, "AdminOnly" ) && !isAdmin ) then ReportErrorToPlayer( ply, "admin" ) return false end
 
 	return true
 
@@ -617,65 +774,71 @@ end
 	Name: Spawn_SENT
 	Desc: Console Command for a player to spawn different items
 -----------------------------------------------------------]]
-function Spawn_SENT( player, EntityName, tr )
+function Spawn_SENT( ply, EntityName, tr )
 
-	if ( EntityName == nil ) then return end
+	-- We don't support this command from dedicated server console
+	if ( !IsValid( ply ) ) then return end
 
-	if ( !CanPlayerSpawnSENT( player, EntityName ) ) then return end
+	-- Player is dead, don't allow them to spam stuff
+	if ( not ply:Alive() and not ply:IsAdmin() ) then ReportErrorToPlayer( ply, "dead" ) return end
 
-	-- Ask the gamemode if it's ok to spawn this
-	if ( !gamemode.Call( "PlayerSpawnSENT", player, EntityName ) ) then return end
+	if ( EntityName == nil ) then ReportErrorToPlayer( ply, "bad_sent" ) return end
 
-	local vStart = player:EyePos()
-	local vForward = player:GetAimVector()
+	if ( !CanPlayerSpawnSENT( ply, EntityName ) ) then return end
 
-	if ( !tr ) then
+	-- Ask the gamemode if it's OK to spawn this
+	if ( !gamemode.Call( "PlayerSpawnSENT", ply, EntityName ) ) then ReportErrorToPlayer( ply, "hook" ) return end
 
-		local trace = {}
-		trace.start = vStart
-		trace.endpos = vStart + ( vForward * 4096 )
-		trace.filter = player
-
-		tr = util.TraceLine( trace )
-
-	end
+	if ( !tr ) then tr = GetSpawnTrace( ply ) end
 
 	local entity = nil
-	local PrintName = nil
+	local PrintName = EntityName
 	local sent = scripted_ents.GetStored( EntityName )
 
 	if ( sent ) then
 
-		local sent = sent.t
+		local sentTable = sent.t
 
 		ClassName = EntityName
 
 			local SpawnFunction = scripted_ents.GetMember( EntityName, "SpawnFunction" )
-			if ( !SpawnFunction ) then return end
-			entity = SpawnFunction( sent, player, tr, EntityName )
+			if ( !SpawnFunction ) then ReportErrorToPlayer( ply, "bad_entity" ) return end -- Fallback to default behavior below?
+
+			entity = SpawnFunction( sentTable, ply, tr, EntityName )
 
 			if ( IsValid( entity ) ) then
-				entity:SetCreator( player )
+				entity:SetCreator( ply )
 			end
 
 		ClassName = nil
 
-		PrintName = sent.PrintName
+		PrintName = sentTable.PrintName
 
 	else
 
 		-- Spawn from list table
-		local SpawnableEntities = list.Get( "SpawnableEntities" )
-		if ( !SpawnableEntities ) then return end
-		local EntTable = SpawnableEntities[ EntityName ]
-		if ( !EntTable ) then return end
+		local EntTable = list.GetEntry( "SpawnableEntities", EntityName )
+		if ( !EntTable ) then ReportErrorToPlayer( ply, "bad_sent" ) return end
 
 		PrintName = EntTable.PrintName
 
 		local SpawnPos = tr.HitPos + tr.HitNormal * 16
 		if ( EntTable.NormalOffset ) then SpawnPos = SpawnPos + tr.HitNormal * EntTable.NormalOffset end
 
+		-- Make sure the spawn position is not out of bounds
+		local oobTr = util.TraceLine( {
+			start = tr.HitPos,
+			endpos = SpawnPos,
+			mask = MASK_SOLID_BRUSHONLY
+		} )
+
+		if ( oobTr.Hit ) then
+			SpawnPos = oobTr.HitPos + oobTr.HitNormal * ( tr.HitPos:Distance( oobTr.HitPos ) / 2 )
+		end
+
 		entity = ents.Create( EntTable.ClassName )
+		if ( !IsValid( entity ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
+
 		entity:SetPos( SpawnPos )
 
 		if ( EntTable.KeyValues ) then
@@ -690,6 +853,9 @@ function Spawn_SENT( player, EntityName, tr )
 
 		entity:Spawn()
 		entity:Activate()
+		entity.EntityName = EntityName -- For duplicator usage later on
+
+		DoPropSpawnedEffect( entity )
 
 		if ( EntTable.DropToFloor ) then
 			entity:DropToFloor()
@@ -697,176 +863,243 @@ function Spawn_SENT( player, EntityName, tr )
 
 	end
 
-	if ( IsValid( entity ) ) then
-
-		if ( IsValid( player ) ) then
-			gamemode.Call( "PlayerSpawnedSENT", player, entity )
-		end
-
-		undo.Create( "SENT" )
-			undo.SetPlayer( player )
-			undo.AddEntity( entity )
-			if ( PrintName ) then
-				undo.SetCustomUndoText( "Undone " .. PrintName )
-			end
-		undo.Finish( "Scripted Entity (" .. tostring( EntityName ) .. ")" )
-
-		player:AddCleanup( "sents", entity )
-		entity:SetVar( "Player", player )
-
-	end
-
-end
-concommand.Add( "gm_spawnsent", function( ply, cmd, args ) Spawn_SENT( ply, args[ 1 ] ) end )
-
---[[---------------------------------------------------------
-	-- Give a swep.. duh.
------------------------------------------------------------]]
-function CCGiveSWEP( player, command, arguments )
-
-	if ( arguments[1] == nil ) then return end
-	if ( !player:Alive() ) then return end
-
-	-- Make sure this is a SWEP
-	local swep = list.Get( "Weapon" )[ arguments[1] ]
-	if ( swep == nil ) then return end
-
-	-- You're not allowed to spawn this!
-	if ( ( !swep.Spawnable && !player:IsAdmin() ) || ( swep.AdminOnly && !player:IsAdmin() ) ) then
+	if ( !IsValid( entity ) ) then
+		-- Existing addons doing weird things...
+		if ( entity != nil ) then ReportErrorToPlayer( ply, "no_entity" ) end
 		return
 	end
 
-	if ( !gamemode.Call( "PlayerGiveSWEP", player, arguments[1], swep ) ) then return end
+	TryFixPropPosition( ply, entity, tr.HitPos )
 
-	MsgAll( "Giving " .. player:Nick() .. " a " .. swep.ClassName .. "\n" )
-	player:Give( swep.ClassName )
+	if ( IsValid( ply ) ) then
+		gamemode.Call( "PlayerSpawnedSENT", ply, entity )
+	end
+
+	undo.Create( "SENT" )
+		undo.SetPlayer( ply )
+		undo.AddEntity( entity )
+		if ( PrintName ) then
+			undo.SetCustomUndoText( "Undone " .. PrintName )
+		end
+	undo.Finish( "#undo.generic.entity (" .. tostring( PrintName ) .. ")" )
+
+	ply:AddCleanup( "sents", entity )
+	entity:SetVar( "Player", ply )
+
+	return entity
+
+end
+concommand.Add( "gm_spawnsent", function( ply, cmd, args ) Spawn_SENT( ply, args[ 1 ] ) end, nil, "Spawn sandbox scripted entities." )
+
+--[[---------------------------------------------------------
+	-- Give a swep.
+-----------------------------------------------------------]]
+function CCGiveSWEP( ply, command, arguments )
+
+	-- We don't support this command from dedicated server console
+	if ( !IsValid( ply ) ) then return end
+
+	-- Player is dead, don't allow them to spam stuff
+	if ( !ply:Alive() ) then ReportErrorToPlayer( ply, "dead" ) return end
+
+	if ( arguments[1] == nil ) then ReportErrorToPlayer( ply, "bad_weapon" ) return end
+
+	-- Make sure this is a SWEP
+	local swep = list.GetEntry( "Weapon", arguments[1] )
+	if ( swep == nil ) then ReportErrorToPlayer( ply, "bad_weapon" ) return end
+
+	-- You're not allowed to spawn this!
+	local isAdmin = ply:IsAdmin() or game.SinglePlayer()
+	if ( ( !swep.Spawnable && !isAdmin ) or ( swep.AdminOnly && !isAdmin ) ) then
+		return
+	end
+
+	if ( !gamemode.Call( "PlayerGiveSWEP", ply, arguments[1], swep ) ) then ReportErrorToPlayer( ply, "hook" ) return end
+
+	if ( !ply:HasWeapon( swep.ClassName ) ) then
+		MsgAll( "Giving " .. ply:Nick() .. " a " .. swep.ClassName .. "\n" )
+		ply:Give( swep.ClassName )
+	end
 
 	-- And switch to it
-	player:SelectWeapon( swep.ClassName )
+	ply:SelectWeapon( swep.ClassName )
 
 end
-concommand.Add( "gm_giveswep", CCGiveSWEP )
+concommand.Add( "gm_giveswep", CCGiveSWEP, nil, "Give a sandbox weapons directly to the executing player." )
 
 --[[---------------------------------------------------------
-	-- Give a swep.. duh.
+	-- Spawn a SWEP on the ground
 -----------------------------------------------------------]]
-function Spawn_Weapon( Player, wepname, tr )
+function Spawn_Weapon( ply, wepname, tr )
 
-	if ( wepname == nil ) then return end
+	-- We don't support this command from dedicated server console
+	if ( !IsValid( ply ) ) then return end
 
-	local swep = list.Get( "Weapon" )[ wepname ]
+	-- Player is dead, don't allow them to spam stuff
+	if ( not ply:Alive() and not ply:IsAdmin() ) then ReportErrorToPlayer( ply, "dead" ) return end
+
+	if ( wepname == nil ) then ReportErrorToPlayer( ply, "bad_weapon" ) return end
 
 	-- Make sure this is a SWEP
-	if ( swep == nil ) then return end
+	local swep = list.GetEntry( "Weapon", wepname )
+	if ( swep == nil ) then ReportErrorToPlayer( ply, "bad_weapon" ) return end
 
 	-- You're not allowed to spawn this!
-	if ( ( !swep.Spawnable && !Player:IsAdmin() ) || ( swep.AdminOnly && !Player:IsAdmin() ) ) then
+	local isAdmin = ply:IsAdmin() or game.SinglePlayer()
+	if ( ( !swep.Spawnable && !isAdmin ) or ( swep.AdminOnly && !isAdmin ) ) then
+		ReportErrorToPlayer( ply, "admin" )
 		return
 	end
 
-	if ( !gamemode.Call( "PlayerSpawnSWEP", Player, wepname, swep ) ) then return end
-
-	if ( !tr ) then
-		tr = Player:GetEyeTraceNoCursor()
+	-- Do not allow spawning weapons with no model
+	local swepTable = weapons.Get( swep.ClassName )
+	if ( swepTable && swepTable.WorldModel == "" && !isAdmin ) then
+		ReportErrorToPlayer( ply, "bad_weapon" )
+		return
 	end
 
-	if ( !tr.Hit ) then return end
+	if ( !gamemode.Call( "PlayerSpawnSWEP", ply, wepname, swep ) ) then ReportErrorToPlayer( ply, "hook" ) return end
+
+	if ( !tr ) then tr = GetSpawnTrace( ply ) end
 
 	local entity = ents.Create( swep.ClassName )
+	if ( !IsValid( entity ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
 
-	if ( IsValid( entity ) ) then
+	DoPropSpawnedEffect( entity )
 
-		entity:SetPos( tr.HitPos + tr.HitNormal * 32 )
-		entity:Spawn()
+	local SpawnPos = tr.HitPos + tr.HitNormal * 32
 
-		gamemode.Call( "PlayerSpawnedSWEP", Player, entity )
+	-- Make sure the spawn position is not out of bounds
+	local oobTr = util.TraceLine( {
+		start = tr.HitPos,
+		endpos = SpawnPos,
+		mask = MASK_SOLID_BRUSHONLY
+	} )
 
+	if ( oobTr.Hit ) then
+		SpawnPos = oobTr.HitPos + oobTr.HitNormal * ( tr.HitPos:Distance( oobTr.HitPos ) / 2 )
 	end
 
+	entity:SetCreator( ply )
+	entity:SetPos( SpawnPos )
+	entity:Spawn()
+
+	undo.Create( "SWEP" )
+		undo.SetPlayer( ply )
+		undo.AddEntity( entity )
+		undo.SetCustomUndoText( "Undone " .. tostring( swep.PrintName ) )
+	undo.Finish( "#undo.generic.weapon (" .. tostring( swep.PrintName ) .. ")" )
+
+	-- Throw it into SENTs category
+	ply:AddCleanup( "sents", entity )
+
+	TryFixPropPosition( ply, entity, tr.HitPos )
+
+	gamemode.Call( "PlayerSpawnedSWEP", ply, entity )
+
+	return entity
+
 end
-concommand.Add( "gm_spawnswep", function( ply, cmd, args ) Spawn_Weapon( ply, args[1] ) end )
+concommand.Add( "gm_spawnswep", function( ply, cmd, args ) Spawn_Weapon( ply, args[1] ) end, nil, "Spawn sandbox weapons where the player is looking at." )
 
-local function MakeVehicle( Player, Pos, Ang, Model, Class, VName, VTable, data )
+-- Do not allow people to undo weapons from player's hands
+hook.Add( "WeaponEquip", "SpawnWeaponUndoRemoval", function( wep, ply )
+	undo.ReplaceEntity( wep, nil )
+	cleanup.ReplaceEntity( wep, nil )
+end )
 
-	if ( !gamemode.Call( "PlayerSpawnVehicle", Player, Model, VName, VTable ) ) then return end
+local function MakeVehicle( ply, pos, ang, model, className, VName, data )
 
-	local Ent = ents.Create( Class )
-	if ( !Ent ) then return NULL end
+	local VTable = list.GetEntry( "Vehicles", VName )
+	if ( VTable ) then
+		-- Load the proper model & class, instead of whatever the dupe wanted us to use
+		-- For very old dupes, VName will not be set.
+		model = VTable.Model
+		className = VTable.Class
+	end
 
-	duplicator.DoGeneric( Ent, data )
+	if ( IsValid( ply ) && !gamemode.Call( "PlayerSpawnVehicle", ply, model, VName, VTable ) ) then return end
 
-	Ent:SetModel( Model )
+	local vehicle = ents.Create( className )
+	if ( !IsValid( vehicle ) ) then return NULL end
 
-	// Fallback vehiclescripts for HL2 maps ( dupe support )
-	if ( Model == "models/buggy.mdl" ) then Ent:SetKeyValue( "vehiclescript", "scripts/vehicles/jeep_test.txt" ) end
-	if ( Model == "models/vehicle.mdl" ) then Ent:SetKeyValue( "vehiclescript", "scripts/vehicles/jalopy.txt" ) end
+	duplicator.DoGeneric( vehicle, data )
+
+	vehicle:SetModel( model )
+
+	-- Fallback vehiclescripts for HL2 maps ( dupe support )
+	if ( model == "models/buggy.mdl" ) then vehicle:SetKeyValue( "vehiclescript", "scripts/vehicles/jeep_test.txt" ) end
+	if ( model == "models/vehicle.mdl" ) then vehicle:SetKeyValue( "vehiclescript", "scripts/vehicles/jalopy.txt" ) end
 
 	-- Fill in the keyvalues if we have them
 	if ( VTable && VTable.KeyValues ) then
 		for k, v in pairs( VTable.KeyValues ) do
-
-			local kLower = string.lower( k )
-
-			if ( kLower == "vehiclescript" ||
-			     kLower == "limitview"     ||
-			     kLower == "vehiclelocked" ||
-			     kLower == "cargovisible"  ||
-			     kLower == "enablegun" )
-			then
-				Ent:SetKeyValue( k, v )
-			end
-
+			vehicle:SetKeyValue( k, v )
 		end
 	end
 
-	Ent:SetAngles( Ang )
-	Ent:SetPos( Pos )
+	if ( ply ) then vehicle:SetCreator( ply ) end
+	vehicle:SetAngles( ang )
+	vehicle:SetPos( pos )
 
-	DoPropSpawnedEffect( Ent )
+	DoPropSpawnedEffect( vehicle )
 
-	Ent:Spawn()
-	Ent:Activate()
+	vehicle:Spawn()
+	vehicle:Activate()
 
-	if ( Ent.SetVehicleClass && VName ) then Ent:SetVehicleClass( VName ) end
-	Ent.VehicleName = VName
-	Ent.VehicleTable = VTable
+	if ( VTable && VTable.Health ) then
+		vehicle:SetHealth( VTable.Health )
+		vehicle:SetMaxHealth( VTable.Health )
+	end
+
+	-- Some vehicles reset this in Spawn()
+	if ( data && data.ColGroup ) then vehicle:SetCollisionGroup( data.ColGroup ) end
+
+	-- Store spawnmenu data for addons and stuff
+	if ( vehicle.SetVehicleClass && VName ) then vehicle:SetVehicleClass( VName ) end
+	vehicle.VehicleName = VName
 
 	-- We need to override the class in the case of the Jeep, because it
 	-- actually uses a different class than is reported by GetClass
-	Ent.ClassOverride = Class
+	vehicle.ClassOverride = className
 
-	if ( IsValid( Player ) ) then
-		gamemode.Call( "PlayerSpawnedVehicle", Player, Ent )
+	if ( IsValid( ply ) ) then
+		gamemode.Call( "PlayerSpawnedVehicle", ply, vehicle )
 	end
 
-	return Ent
+	return vehicle
 
 end
 
-duplicator.RegisterEntityClass( "prop_vehicle_jeep_old", MakeVehicle, "Pos", "Ang", "Model", "Class", "VehicleName", "VehicleTable", "Data" )
-duplicator.RegisterEntityClass( "prop_vehicle_jeep", MakeVehicle, "Pos", "Ang", "Model", "Class", "VehicleName", "VehicleTable", "Data" )
-duplicator.RegisterEntityClass( "prop_vehicle_airboat", MakeVehicle, "Pos", "Ang", "Model", "Class", "VehicleName", "VehicleTable", "Data" )
-duplicator.RegisterEntityClass( "prop_vehicle_prisoner_pod", MakeVehicle, "Pos", "Ang", "Model", "Class", "VehicleName", "VehicleTable", "Data" )
+local VehicleClassList = {
+	"prop_vehicle_jeep_old", "prop_vehicle_jeep", "prop_vehicle_apc",
+	"prop_vehicle_airboat", "prop_vehicle_prisoner_pod"
+}
+for _, v in ipairs( VehicleClassList ) do
+	duplicator.RegisterEntityClass( v, MakeVehicle, "Pos", "Ang", "Model", "Class", "VehicleName", "Data" )
+end
 
 --[[---------------------------------------------------------
-	Name: CCSpawnVehicle
+	Name: Spawn_Vehicle
 	Desc: Player attempts to spawn vehicle
 -----------------------------------------------------------]]
-function Spawn_Vehicle( Player, vname, tr )
+function Spawn_Vehicle( ply, vname, tr )
 
-	if ( !vname ) then return end
+	-- We don't support this command from dedicated server console
+	if ( !IsValid( ply ) ) then return end
 
-	local VehicleList = list.Get( "Vehicles" )
-	local vehicle = VehicleList[ vname ]
+	-- Player is dead, don't allow them to spam stuff
+	if ( not ply:Alive() and not ply:IsAdmin() ) then ReportErrorToPlayer( ply, "dead" ) return end
 
-	-- Not a valid vehicle to be spawning..
-	if ( !vehicle ) then return end
+	if ( !vname ) then ReportErrorToPlayer( ply, "bad_vehicle" ) return end
 
-	if ( !tr ) then
-		tr = Player:GetEyeTraceNoCursor()
-	end
+	-- Is it a valid vehicle to be spawning..
+	local vehicle = list.GetEntry( "Vehicles", vname )
+	if ( !vehicle ) then ReportErrorToPlayer( ply, "bad_vehicle" ) return end
 
-	local Angles = Player:GetAngles()
+	if ( !tr ) then tr = GetSpawnTrace( ply ) end
+
+	local Angles = ply:GetAngles()
 	Angles.pitch = 0
 	Angles.roll = 0
 	Angles.yaw = Angles.yaw + 180
@@ -876,28 +1109,25 @@ function Spawn_Vehicle( Player, vname, tr )
 		pos = pos + tr.HitNormal * vehicle.Offset
 	end
 
-	local Ent = MakeVehicle( Player, pos, Angles, vehicle.Model, vehicle.Class, vname, vehicle )
-	if ( !IsValid( Ent ) ) then return end
+	local Ent = MakeVehicle( ply, pos, Angles, vehicle.Model, vehicle.Class, vname )
+	if ( !IsValid( Ent ) ) then ReportErrorToPlayer( ply, "no_entity" ) return end
+
+	-- Unstable for Jeeps
+	-- TryFixPropPosition( ply, Ent, tr.HitPos )
 
 	if ( vehicle.Members ) then
 		table.Merge( Ent, vehicle.Members )
-		duplicator.StoreEntityModifier( Ent, "VehicleMemDupe", vehicle.Members )
 	end
 
 	undo.Create( "Vehicle" )
-		undo.SetPlayer( Player )
+		undo.SetPlayer( ply )
 		undo.AddEntity( Ent )
 		undo.SetCustomUndoText( "Undone " .. vehicle.Name )
-	undo.Finish( "Vehicle (" .. tostring( vehicle.Name ) .. ")" )
+	undo.Finish( "#undo.generic.vehicle (" .. tostring( vehicle.Name ) .. ")" )
 
-	Player:AddCleanup( "vehicles", Ent )
+	ply:AddCleanup( "vehicles", Ent )
 
-end
-concommand.Add( "gm_spawnvehicle", function( ply, cmd, args ) Spawn_Vehicle( ply, args[1] ) end )
-
-local function VehicleMemDupe( Player, Entity, Data )
-
-	table.Merge( Entity, Data )
+	return Ent
 
 end
-duplicator.RegisterEntityModifier( "VehicleMemDupe", VehicleMemDupe )
+concommand.Add( "gm_spawnvehicle", function( ply, cmd, args ) Spawn_Vehicle( ply, args[1] ) end, nil, "Spawn sandbox vehicles." )

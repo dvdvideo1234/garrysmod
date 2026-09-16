@@ -18,14 +18,25 @@ end
 
 function ENT:SpawnFunction( ply, tr, ClassName )
 
-	if ( !tr.Hit ) then return end
-
 	local SpawnPos = tr.HitPos + tr.HitNormal * 10
 	local SpawnAng = ply:EyeAngles()
 	SpawnAng.p = 0
 	SpawnAng.y = SpawnAng.y + 180
 
+	-- Make sure the spawn position is not out of bounds
+	local oobTr = util.TraceLine( {
+		start = tr.HitPos,
+		endpos = SpawnPos,
+		mask = MASK_SOLID_BRUSHONLY
+	} )
+
+	if ( oobTr.Hit ) then
+		SpawnPos = oobTr.HitPos + oobTr.HitNormal * ( tr.HitPos:Distance( oobTr.HitPos ) / 2 )
+	end
+
 	local ent = ents.Create( ClassName )
+	if ( !IsValid( ent ) ) then return end
+
 	ent:SetPos( SpawnPos )
 	ent:SetAngles( SpawnAng )
 	ent:Spawn()

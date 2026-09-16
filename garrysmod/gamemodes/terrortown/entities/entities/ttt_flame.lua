@@ -51,11 +51,9 @@ end
 
 function StartFires(pos, tr, num, lifetime, explode, dmgowner)
    for i=1, num do
-      local ang = Angle(-math.Rand(0, 180), math.Rand(0, 360), math.Rand(0, 360))
-
-      local vstart = pos + tr.HitNormal * 64
-
       local flame = ents.Create("ttt_flame")
+      if not IsValid(flame) then print( "Failed to spawn flame entities!" ) return end
+
       flame:SetPos(pos)
       if IsValid(dmgowner) and dmgowner:IsPlayer() then
          flame:SetDamageParent(dmgowner)
@@ -71,12 +69,13 @@ function StartFires(pos, tr, num, lifetime, explode, dmgowner)
       if IsValid(phys) then
          -- the balance between mass and force is subtle, be careful adjusting
          phys:SetMass(2)
+         local ang = Angle(-math.Rand(0, 180), math.Rand(0, 360), math.Rand(0, 360))
          phys:ApplyForceCenter(ang:Forward() * 500)
          phys:AddAngleVelocity(Vector(ang.p, ang.r, ang.y))
       end
 
    end
-   
+
 end
 
 function SpawnFire(pos, size, attack, fuel, owner, parent)
@@ -92,7 +91,7 @@ function SpawnFire(pos, size, attack, fuel, owner, parent)
    fire:SetKeyValue("fireattack", attack)
    fire:SetKeyValue("health", fuel)
    fire:SetKeyValue("damagescale", "-10") -- only neg. value prevents dmg
-   
+
    fire:Spawn()
    fire:Activate()
 
@@ -102,10 +101,8 @@ end
 -- greatly simplified version of SDK's game_shard/gamerules.cpp:RadiusDamage
 -- does no block checking, radius should be very small
 function RadiusDamage(dmginfo, pos, radius, inflictor)
-   local victims = ents.FindInSphere(pos, radius)
-
    local tr = nil
-   for k, vic in pairs(victims) do
+   for k, vic in ipairs(ents.FindInSphere(pos, radius)) do
       if IsValid(vic) and inflictor:Visible(vic) then
          if vic:IsPlayer() and vic:Alive() and vic:Team() == TEAM_TERROR then
             vic:TakeDamageInfo(dmginfo)
@@ -180,7 +177,7 @@ function ENT:Think()
             dmg:SetAttacker(self)
          end
          dmg:SetInflictor(self.firechild)
-         
+
          RadiusDamage(dmg, self:GetPos(), 132, self)
 
          self.next_hurt = CurTime() + self.hurt_interval
@@ -200,24 +197,26 @@ function ENT:Think()
 end
 
 if CLIENT then
-local fakefire = Material("cable/smoke")
-local side = Angle(-90, 0, 0)
-function ENT:BackupDraw()
-   if not self:GetBurning() then return end
+   local fakefire = Material("cable/smoke")
+   local side = Angle(-90, 0, 0)
+   local GetTranslation = LANG.GetTranslation
 
-   local vstart = self:GetPos()
-   local vend = vstart + Vector(0, 0, 90)
+   function ENT:BackupDraw()
+      if not self:GetBurning() then return end
 
-   side.r = side.r + 0.1
+      local vstart = self:GetPos()
+      local vend = vstart + Vector(0, 0, 90)
 
-   cam.Start3D2D(vstart, side, 1)
-   draw.DrawText("FIRE! IT BURNS!", "Default", 0, 0, COLOR_RED, ALIGN_CENTER)
-   cam.End3D2D()
+      side.r = side.r + 0.1
 
-   render.SetMaterial(fakefire)
-   render.DrawBeam(vstart, vend, 80, 0, 0, COLOR_RED)
-end
+      cam.Start3D2D(vstart, side, 1)
+      draw.DrawText(GetTranslation("flame_burn"), "Default", 0, 0, COLOR_RED, TEXT_ALIGN_CENTER)
+      cam.End3D2D()
 
-function ENT:Draw()
-end
+      render.SetMaterial(fakefire)
+      render.DrawBeam(vstart, vend, 80, 0, 0, COLOR_RED)
+   end
+
+   function ENT:Draw()
+   end
 end

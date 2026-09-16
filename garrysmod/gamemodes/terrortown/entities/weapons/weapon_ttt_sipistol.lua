@@ -1,6 +1,7 @@
 AddCSLuaFile()
 
-SWEP.HoldType              = "pistol"
+SWEP.HoldType              = "revolver"
+SWEP.ReloadHoldType        = "pistol"
 
 if CLIENT then
    SWEP.PrintName          = "sipistol_name"
@@ -12,7 +13,7 @@ if CLIENT then
    SWEP.EquipMenuData = {
       type = "item_weapon",
       desc = "sipistol_desc"
-   };
+   }
 
    SWEP.Icon               = "vgui/ttt/icon_silenced"
    SWEP.IconLetter         = "a"
@@ -56,7 +57,7 @@ end
 
 -- We were bought as special equipment, and we have an extra to give
 function SWEP:WasBought(buyer)
-   if IsValid(buyer) then -- probably already self.Owner
+   if IsValid(buyer) then -- probably already self:GetOwner()
       buyer:GiveAmmo( 20, "Pistol" )
    end
 end

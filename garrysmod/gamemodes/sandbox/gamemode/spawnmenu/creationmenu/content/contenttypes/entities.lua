@@ -1,74 +1,38 @@
 
-hook.Add( "PopulateEntities", "AddEntityContent", function( pnlContent, tree, node )
+local TranslateNames = {
+	["Editors"] = "#spawnmenu.category.editors",
+	["Fun + Games"] = "#spawnmenu.category.fun_games",
+	["Other"] = "#spawnmenu.category.other"
+}
 
-	local Categorised = {}
+local function CreateEntityIcon( ent, propPanel )
+	return spawnmenu.CreateContentIcon( ent.ScriptedEntityType or "entity", propPanel, {
+		nicename	= ent.PrintName or ent.SpawnName,
+		spawnname	= ent.SpawnName,
+		material	= ent.IconOverride or ( "entities/" .. ent.SpawnName .. ".png" ),
+		admin		= ent.AdminOnly
+	} )
+end
 
-	-- Add this list into the tormoil
-	local SpawnableEntities = list.Get( "SpawnableEntities" )
-	if ( SpawnableEntities ) then
-		for k, v in pairs( SpawnableEntities ) do
+list.Set( "ContentCategoryIcons", "Half-Life: Source", "games/16/hl1.png" )
+list.Set( "ContentCategoryIcons", "Half-Life 2", "games/16/hl2.png" )
+list.Set( "ContentCategoryIcons", "Portal", "games/16/portal.png" )
 
-			v.SpawnName = k
-			v.Category = v.Category or "Other"
-			Categorised[ v.Category ] = Categorised[ v.Category ] or {}
-			table.insert( Categorised[ v.Category ], v )
+hook.Add( "PopulateEntities", "AddEntityContent", function( pnlContent, tree, browseNode )
 
-		end
-	end
-
-	--
-	-- Add a tree node for each category
-	--
-	for CategoryName, v in SortedPairs( Categorised ) do
-
-		-- Add a node to the tree
-		local node = tree:AddNode( CategoryName, "icon16/bricks.png" )
-
-			-- When we click on the node - populate it using this function
-		node.DoPopulate = function( self )
-
-			-- If we've already populated it - forget it.
-			if ( self.PropPanel ) then return end
-
-			-- Create the container panel
-			self.PropPanel = vgui.Create( "ContentContainer", pnlContent )
-			self.PropPanel:SetVisible( false )
-			self.PropPanel:SetTriggerSpawnlistChange( false )
-
-			for k, ent in SortedPairsByMemberValue( v, "PrintName" ) do
-
-				spawnmenu.CreateContentIcon( ent.ScriptedEntityType or "entity", self.PropPanel, {
-					nicename	= ent.PrintName or ent.ClassName,
-					spawnname	= ent.SpawnName,
-					material	= "entities/" .. ent.SpawnName .. ".png",
-					admin		= ent.AdminOnly
-				} )
-
-			end
-
-		end
-
-		-- If we click on the node populate it and switch to it.
-		node.DoClick = function( self )
-
-			self:DoPopulate()
-			pnlContent:SwitchPanel( self.PropPanel )
-
-		end
-
-	end
-
-	-- Select the first node
-	local FirstNode = tree:Root():GetChildNode( 0 )
-	if ( IsValid( FirstNode ) ) then
-		FirstNode:InternalDoClick()
-	end
+	pnlContent:PopulateFromList( "SpawnableEntities", tree, {
+		SortName = "PrintName",
+		CategoryIcon = "icon16/bricks.png",
+		TranslateNames = TranslateNames,
+		CreateIconFunc = CreateEntityIcon
+	} )
 
 end )
 
 spawnmenu.AddCreationTab( "#spawnmenu.category.entities", function()
 
 	local ctrl = vgui.Create( "SpawnmenuContentPanel" )
+	ctrl:EnableSearch( "entities", "PopulateEntities" )
 	ctrl:CallPopulateHook( "PopulateEntities" )
 
 	return ctrl

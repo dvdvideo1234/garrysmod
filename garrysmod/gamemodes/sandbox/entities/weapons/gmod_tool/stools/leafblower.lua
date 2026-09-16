@@ -5,16 +5,22 @@ TOOL.AddToMenu = false
 -- This tool is the most important aspect of Garry's Mod
 --
 
+TOOL.Name = "#tool.leafblower.name"
+TOOL.Information = { { name = "left" } }
 TOOL.LeftClickAutomatic = true
 
 function TOOL:LeftClick( trace )
 
 	if ( CLIENT ) then return end
 
-	util.PrecacheSound( "ambient/wind/wind_hit2.wav" )
-	self:GetOwner():EmitSound( "ambient/wind/wind_hit2.wav" )
+	if ( ( self.NextWindSound or 0 ) <= CurTime() ) then
 
-	if ( IsValid( trace.Entity ) && IsValid( trace.Entity:GetPhysicsObject() ) ) then
+		self:GetOwner():EmitSound( "ambient/wind/wind_hit2.wav", 75, math.random( 75, 125 ) )
+		self.NextWindSound = CurTime() + 0.5
+
+	end
+
+	if ( IsValid( trace.Entity ) and IsValid( trace.Entity:GetPhysicsObject() ) ) then
 
 		local phys = trace.Entity:GetPhysicsObject()	-- The physics object
 		local direction = trace.StartPos - trace.HitPos	-- The direction of the force
@@ -23,7 +29,7 @@ function TOOL:LeftClick( trace )
 		local maxdistance = 512							-- The max distance the gun should reach
 
 		-- Lessen the force from a distance
-		local ratio = math.Clamp( ( 1 - ( distance / maxdistance ) ), 0, 1 )
+		local ratio = math.Clamp( 1 - ( distance / maxdistance ), 0, 1 )
 
 		-- Set up the 'real' force and the offset of the force
 		local vForce = -direction * ( force * ratio )

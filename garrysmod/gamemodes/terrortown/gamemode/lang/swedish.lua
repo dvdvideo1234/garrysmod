@@ -1,6 +1,6 @@
 ---- English language strings
 
-local L = LANG.CreateLanguage("Svenska")
+local L = LANG.CreateLanguage("Svenska", "sv-SE")
 
 --- General text used in various places
 L.traitor    = "Förrädare"
@@ -269,7 +269,9 @@ L.set_mute_tip      = "Sätt på detta så hörs inte levande spelare när du ä
 
 L.set_title_lang    = "Språkinställningar"
 
-L.set_lang          = "Välj språk:"
+-- It may be best to leave this next one english, so english players can always
+-- find the language setting even if it's set to a language they don't know.
+L.set_lang          = "Välj språk (Select language):"
 
 
 --- Weapons and equipment, HUD and messages
@@ -1041,10 +1043,10 @@ L.aw_fnd2_title = "Gotta Catch Em All"
 L.aw_fnd2_text  = "found {num} corpses for his collection."
 
 L.aw_fnd3_title = "Death Scent"
-L.aw_fnd3_text  = "keeps stumbling on random corpses, {num} times this round." 
+L.aw_fnd3_text  = "keeps stumbling on random corpses, {num} times this round."
 
 L.aw_crd1_title = "Recycler"
-L.aw_crd1_text  = "scrounged up {num} leftover credits from corpses." 
+L.aw_crd1_text  = "scrounged up {num} leftover credits from corpses."
 
 L.aw_tod1_title = "Pyrrhusseger"
 L.aw_tod1_text  = "dog bara några sekunder innan hans lag vann rundan."
@@ -1052,16 +1054,21 @@ L.aw_tod1_text  = "dog bara några sekunder innan hans lag vann rundan."
 L.aw_tod2_title = "Jag Hatar Detta Spel"
 L.aw_tod2_text  = "dog precis efter att rundan påbörjats."
 
+
+--- New and modified pieces of text are placed below this point, marked with the
+--- version or the date in which they were added, to make updating translations easier.
+
+
 --- v23
 L.set_avoid_det     = "Undvik att bli vald som Detective"
 L.set_avoid_det_tip = "Aktivera det här för att be servern att inte välja dig som Detective om möjligt. Betyder inte att du är Traitor oftare."
- 
+
 --- v24
 L.drop_no_ammo = "Otillräcklig ammunition i vapnets klipp att släppa som en ammo låda."
- 
+
 --- v31
 L.set_cross_brightness = "Hårkors ljushet"
 L.set_cross_size = "Hårkors storlek"
 
--- 5-25-15
+--- 2015-05-25
 L.hat_retrieve = "Du plockade upp hatten av en detektiv."

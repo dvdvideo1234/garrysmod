@@ -4,12 +4,12 @@ local PANEL = {}
 AccessorFunc( PANEL, "m_pMenu", "Menu" )
 AccessorFunc( PANEL, "m_bChecked", "Checked" )
 AccessorFunc( PANEL, "m_bCheckable", "IsCheckable" )
+AccessorFunc( PANEL, "m_bRadio", "Radio" )
 
 function PANEL:Init()
 
 	self:SetContentAlignment( 4 )
-	self:SetTextInset( 30, 0 )			-- Room for icon on left
-	self:SetTextColor( Color( 10, 10, 10 ) )
+	self:SetTextInset( 32, 0 ) -- Room for icon on left
 	self:SetChecked( false )
 
 end
@@ -18,7 +18,7 @@ function PANEL:SetSubMenu( menu )
 
 	self.SubMenu = menu
 
-	if ( !self.SubMenuArrow ) then
+	if ( !IsValid( self.SubMenuArrow ) ) then
 
 		self.SubMenuArrow = vgui.Create( "DPanel", self )
 		self.SubMenuArrow.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "MenuRightArrow", panel, w, h ) end
@@ -29,9 +29,9 @@ end
 
 function PANEL:AddSubMenu()
 
-	local SubMenu = DermaMenu( self )
-		SubMenu:SetVisible( false )
-		SubMenu:SetParent( self )
+	local SubMenu = DermaMenu( true, self )
+	SubMenu:SetVisible( false )
+	SubMenu:SetParent( self )
 
 	self:SetSubMenu( SubMenu )
 
@@ -76,7 +76,7 @@ function PANEL:OnMouseReleased( mousecode )
 
 	DButton.OnMouseReleased( self, mousecode )
 
-	if ( self.m_MenuClicking && mousecode == MOUSE_LEFT ) then
+	if ( self.m_MenuClicking && mousecode == MOUSE_LEFT && self:IsEnabled() ) then
 
 		self.m_MenuClicking = false
 		CloseDermaMenus()
@@ -109,24 +109,39 @@ end
 
 function PANEL:ToggleCheck()
 
-	self:SetChecked( !self:GetChecked() )
-	self:OnChecked( self:GetChecked() )
+	if ( self:GetRadio() ) then
+		if ( self:GetChecked() ) then return end
 
+		local menu = self:GetMenu():GetCanvas()
+
+		for k, pnl in pairs( menu:GetChildren() ) do
+			pnl:SetChecked( false )
+		end
+	end
+
+	self:SetChecked( !self:GetChecked() )
+
+end
+
+function PANEL:SetChecked( b )
+	if ( self:GetChecked() != b ) then
+		self:OnChecked( b )
+	end
+
+	self.m_bChecked = b
 end
 
 function PANEL:OnChecked( b )
 end
 
-function PANEL:PerformLayout()
+function PANEL:PerformLayout( w, h )
 
-	self:SizeToContents()
-	self:SetWide( self:GetWide() + 30 )
-
-	local w = math.max( self:GetParent():GetWide(), self:GetWide() )
+	local contentW, contentH = self:GetContentSize()
+	w = math.max( self:GetParent():GetWide(), contentW + 30 )
 
 	self:SetSize( w, 22 )
 
-	if ( self.SubMenuArrow ) then
+	if ( IsValid( self.SubMenuArrow ) ) then
 
 		self.SubMenuArrow:SetSize( 15, 15 )
 		self.SubMenuArrow:CenterVertical()
@@ -134,7 +149,17 @@ function PANEL:PerformLayout()
 
 	end
 
-	DButton.PerformLayout( self )
+	DButton.PerformLayout( self, w, h )
+
+end
+
+function PANEL:UpdateColours( skin )
+
+	-- If not hovered, but pressed down, choose a different color from the background!
+	if ( !self.Hovered && ( self:IsDown() || self.m_bSelected ) ) then return self:SetTextStyleColor( skin.Colours.Button.Hover ) end
+
+	-- Call the default action
+	return DButton.UpdateColours( self, skin )
 
 end
 

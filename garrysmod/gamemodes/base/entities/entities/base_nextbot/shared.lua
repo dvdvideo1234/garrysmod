@@ -7,7 +7,6 @@ ENT.Author			= ""
 ENT.Contact			= ""
 ENT.Purpose			= ""
 ENT.Instructions	= ""
-ENT.RenderGroup		= RENDERGROUP_OPAQUE
 
 ENT.Type = "nextbot"
 
@@ -28,21 +27,28 @@ else
 		Name: Draw
 		Desc: Draw it!
 	-----------------------------------------------------------]]
-	function ENT:Draw()
-		self:DrawModel()
+	function ENT:Draw( flags )
+		self:DrawModel( flags )
 	end
 
 	--[[---------------------------------------------------------
 		Name: DrawTranslucent
 		Desc: Draw translucent
 	-----------------------------------------------------------]]
-	function ENT:DrawTranslucent()
+	function ENT:DrawTranslucent( flags )
 
 		-- This is here just to make it backwards compatible.
 		-- You shouldn't really be drawing your model here unless it's translucent
 
-		self:Draw()
+		self:Draw( flags )
 
+	end
+
+	--[[---------------------------------------------------------
+		Name: FireAnimationEvent
+		Desc: Called when an animation event is fired. Return true to suppress
+	-----------------------------------------------------------]]
+	function ENT:FireAnimationEvent( pos, ang, event, options )
 	end
 
 end

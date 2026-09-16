@@ -22,7 +22,7 @@ if CLIENT then
       type="Weapon",
       model="models/props_lab/reciever01b.mdl",
       desc="Broadcasts a location to everyone.\n\nUse to warn or group innocents."
-   };
+   }
 
    SWEP.Icon                = "vgui/ttt/icon_beacon"
 end
@@ -79,7 +79,7 @@ local throwsound = Sound( "Weapon_SLAM.SatchelThrow" )
 -- that a number of weapons use it
 function SWEP:BeaconDrop()
    if SERVER then
-      local ply = self.Owner
+      local ply = self:GetOwner()
       if not IsValid(ply) then return end
 
       if self.Planted then return end
@@ -117,7 +117,7 @@ end
 
 function SWEP:BeaconStick()
    if SERVER then
-      local ply = self.Owner
+      local ply = self:GetOwner()
       if not IsValid(ply) then return end
 
       if self.Planted then return end
@@ -189,7 +189,7 @@ function SWEP:Reload()
 end
 
 function SWEP:OnRemove()
-   if CLIENT and IsValid(self.Owner) and self.Owner == LocalPlayer() and self.Owner:IsTerror() then
+   if CLIENT and IsValid(self:GetOwner()) and self:GetOwner() == LocalPlayer() and self:GetOwner():IsTerror() then
       RunConsoleCommand("lastinv")
    end
 end
@@ -203,15 +203,15 @@ if CLIENT then
 end
 
 function SWEP:Deploy()
-   self.Owner:DrawViewModel(false)
+   self:GetOwner():DrawViewModel(false)
    return true
 end
 
-function SWEP:DrawWorldModel()
-   if not IsValid(self.Owner) then
-      self:DrawModel()
+function SWEP:DrawWorldModel(flags)
+   if not IsValid(self:GetOwner()) then
+      self:DrawModel(flags)
    end
 end
 
-function SWEP:DrawWorldModelTranslucent()
+function SWEP:DrawWorldModelTranslucent(flags)
 end

@@ -2,6 +2,9 @@
 local AddConsoleCommand = AddConsoleCommand
 local string = string
 local Msg = Msg
+local isfunction = isfunction
+local type = type
+local ErrorNoHaltWithStack = ErrorNoHaltWithStack
 
 --[[---------------------------------------------------------
    Name: concommand
@@ -26,6 +29,9 @@ end
    Desc: Register a new console command
 -----------------------------------------------------------]]
 function Add( name, func, completefunc, help, flags )
+	if ( !isfunction( func ) ) then ErrorNoHaltWithStack( "bad argument #2 to 'Add' (function expected, got " .. type( func ) .. ")", 2 ) end
+	if ( completefunc != nil && !isfunction( completefunc ) ) then ErrorNoHaltWithStack( "bad argument #3 to 'Add' (function expected, got " .. type( completefunc ) .. ")", 2 ) end
+
 	local LowerName = string.lower( name )
 	CommandList[ LowerName ] = func
 	CompleteList[ LowerName ] = completefunc
@@ -46,12 +52,12 @@ end
    Name: concommand.Run( )
    Desc: Called by the engine when an unknown console command is run
 -----------------------------------------------------------]]
-function Run( player, command, arguments, args )
+function Run( player, command, arguments, argumentsStr )
 
 	local LowerCommand = string.lower( command )
 
 	if ( CommandList[ LowerCommand ] != nil ) then
-		CommandList[ LowerCommand ]( player, command, arguments, args )
+		CommandList[ LowerCommand ]( player, command, arguments, argumentsStr )
 		return true
 	end
 
@@ -64,12 +70,12 @@ end
    Name: concommand.AutoComplete( )
    Desc: Returns a table for the autocompletion
 -----------------------------------------------------------]]
-function AutoComplete( command, arguments )
+function AutoComplete( command, argumentsStr, arguments )
 
 	local LowerCommand = string.lower( command )
 
 	if ( CompleteList[ LowerCommand ] != nil ) then
-		return CompleteList[ LowerCommand ]( command, arguments )
+		return CompleteList[ LowerCommand ]( command, argumentsStr, arguments )
 	end
 
 end

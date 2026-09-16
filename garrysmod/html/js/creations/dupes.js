@@ -1,25 +1,28 @@
 
-App = angular.module( 'CDupesApp', [ 'tranny' ] );
+var IS_SPAWN_MENU = true;
 
-App.config( function ( $routeProvider, $locationProvider )
+App = angular.module( 'CDupesApp', [ 'ngRoute', 'ngLocalize' ] );
+
+App.config( function( $routeProvider, $compileProvider, $locationProvider, $controllerProvider )
 {
 	$routeProvider.when( '/', { templateUrl: 'template/creations/dupes.html' } );
+	$routeProvider.when( '/list/:Category/', { templateUrl: 'template/creations/dupes.html' } );
 	$routeProvider.when( '/list/:Category/:Tag/', { templateUrl: 'template/creations/dupes.html' } );
+	
+	$controllerProvider.register( 'CDupes', CDupes );
+	$controllerProvider.register( 'ControllerDupes', ControllerDupes );
 } );
 
 var CreationScope		= null;
-var CreationLocation	= null;
 
 function CDupes( $scope, $timeout, $location )
 {
 	CreationScope		= $scope;
-	CreationLocation	= $location;
 
 	CreationScope.MyCategories =
 	[
 		"local",
-		"subscribed_ugc",
-		//"favorites_ugc"
+		"subscribed_ugc"
 	];
 
 	CreationScope.Categories =
@@ -31,6 +34,8 @@ function CDupes( $scope, $timeout, $location )
 
 	CreationScope.CategoriesSecondary =
 	[
+		"followed",
+		"favorite",
 		"friends",
 		"mine"
 	];
@@ -80,6 +85,20 @@ function SetDupeSaveState( b )
 //
 function ShowLocalDupes()
 {
-	CreationLocation.path( "/list/local//" ); // Lolz, hackz
-	CreationScope.$apply();
+	Scope.Switch( 'local', 0 );
+}
+
+
+function WindowResized()
+{
+	// dupe is from control.Dupes.js
+	dupe.RefreshDimensions();
+	dupe.UpdatePageNav();
+
+	// Refresh HTML
+	dupe.DigestUpdateResize = setTimeout( function()
+	{
+		self.DigestUpdateResize = 0;
+		Scope.Go( 0 );
+	}, 500 )
 }

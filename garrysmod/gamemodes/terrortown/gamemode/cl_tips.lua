@@ -13,7 +13,7 @@ PANEL.Colors = {
    default = COLOR_LGRAY,
    hover = COLOR_WHITE,
    press = COLOR_RED
-};
+}
 
 function PANEL:Paint()
    -- parent panel will deal with the normal bg, we only need to worry about
@@ -41,7 +41,7 @@ local GetPTranslation = LANG.GetParamTranslation
 local tips_bg = Color(0, 0, 0, 200)
 
 local tip_ids = {}
-for i=1, 40 do
+for i=1, 41 do
    table.insert(tip_ids, i)
 end
 
@@ -54,7 +54,7 @@ local tip_params = {
    [30] = {zoomkey = Key("+zoom", "the 'Suit Zoom' key")},
    [31] = {duckkey = Key("+duck", "DUCK")},
    [36] = {helpkey = Key("+gm_showhelp", "F1")},
-};
+}
 
 PANEL = {}
 

@@ -1,5 +1,10 @@
 
-local matBlurScreen = Material( "pp/blurscreen" )
+local matBlurScreen = nil
+
+-- Menu cannot do blur, so don't load the material
+if ( !MENU_DLL ) then
+	matBlurScreen = Material( "pp/blurscreen" )
+end
 
 --[[
 	This is designed for Paint functions..
@@ -9,27 +14,30 @@ function Derma_DrawBackgroundBlur( panel, starttime )
 	local Fraction = 1
 
 	if ( starttime ) then
-		Fraction = math.Clamp( (SysTime() - starttime) / 1, 0, 1 )
+		Fraction = math.Clamp( ( SysTime() - starttime ) / 1, 0, 1 )
 	end
 
 	local x, y = panel:LocalToScreen( 0, 0 )
 
-	DisableClipping( true )
+	local wasEnabled = DisableClipping( true )
 
-	surface.SetMaterial( matBlurScreen )
-	surface.SetDrawColor( 255, 255, 255, 255 )
+	-- Menu cannot do blur
+	if ( !MENU_DLL ) then
+		surface.SetMaterial( matBlurScreen )
+		surface.SetDrawColor( 255, 255, 255, 255 )
 
-	for i=0.33, 1, 0.33 do
-		matBlurScreen:SetFloat( "$blur", Fraction * 5 * i )
-		matBlurScreen:Recompute()
-		if ( render ) then render.UpdateScreenEffectTexture() end -- Todo: Make this available to menu Lua
-		surface.DrawTexturedRect( x * -1, y * -1, ScrW(), ScrH() )
+		for i = 0.33, 1, 0.33 do
+			matBlurScreen:SetFloat( "$blur", Fraction * 5 * i )
+			matBlurScreen:Recompute()
+			if ( render ) then render.UpdateScreenEffectTexture() end -- Todo: Make this available to menu Lua
+			surface.DrawTexturedRect( x * -1, y * -1, ScrW(), ScrH() )
+		end
 	end
 
 	surface.SetDrawColor( 10, 10, 10, 200 * Fraction )
 	surface.DrawRect( x * -1, y * -1, ScrW(), ScrH() )
 
-	DisableClipping( false )
+	DisableClipping( wasEnabled )
 
 end
 
@@ -61,7 +69,7 @@ function Derma_Message( strText, strTitle, strButtonText )
 	ButtonPanel:SetPaintBackground( false )
 
 	local Button = vgui.Create( "DButton", ButtonPanel )
-	Button:SetText( strButtonText or "OK" )
+	Button:SetText( strButtonText or "#dialog.ok" )
 	Button:SizeToContents()
 	Button:SetTall( 20 )
 	Button:SetWide( Button:GetWide() + 20 )
@@ -84,6 +92,7 @@ function Derma_Message( strText, strTitle, strButtonText )
 
 	Window:MakePopup()
 	Window:DoModal()
+
 	return Window
 
 end
@@ -124,15 +133,15 @@ function Derma_Query( strText, strTitle, ... )
 	local NumOptions = 0
 	local x = 5
 
-	for k=1, 8, 2 do
+	for k = 1, 8, 2 do
 
-		local Text = select( k, ... )
-		if Text == nil then break end
+		local txt = select( k, ... )
+		if ( txt == nil ) then break end
 
-		local Func = select( k+1, ... ) or function() end
+		local Func = select( k + 1, ... ) or function() end
 
 		local Button = vgui.Create( "DButton", ButtonPanel )
-		Button:SetText( Text )
+		Button:SetText( txt )
 		Button:SizeToContents()
 		Button:SetTall( 20 )
 		Button:SetWide( Button:GetWide() + 20 )
@@ -215,7 +224,7 @@ function Derma_StringRequest( strTitle, strText, strDefaultText, fnEnter, fnCanc
 	ButtonPanel:SetPaintBackground( false )
 
 	local Button = vgui.Create( "DButton", ButtonPanel )
-	Button:SetText( strButtonText or "OK" )
+	Button:SetText( strButtonText or "#dialog.ok" )
 	Button:SizeToContents()
 	Button:SetTall( 20 )
 	Button:SetWide( Button:GetWide() + 20 )
@@ -223,7 +232,7 @@ function Derma_StringRequest( strTitle, strText, strDefaultText, fnEnter, fnCanc
 	Button.DoClick = function() Window:Close() fnEnter( TextEntry:GetValue() ) end
 
 	local ButtonCancel = vgui.Create( "DButton", ButtonPanel )
-	ButtonCancel:SetText( strButtonCancelText or "Cancel" )
+	ButtonCancel:SetText( strButtonCancelText or "#dialog.cancel" )
 	ButtonCancel:SizeToContents()
 	ButtonCancel:SetTall( 20 )
 	ButtonCancel:SetWide( Button:GetWide() + 20 )

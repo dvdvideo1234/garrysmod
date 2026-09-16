@@ -33,7 +33,7 @@ function PrintTraitors(ply)
       local ps = player.GetAll()
       table.sort(ps, TraitorSort)
 
-      for _, p in pairs(ps) do
+      for _, p in ipairs(ps) do
          if IsValid(p) then
             pr(p:GetTraitor() and "TRAITOR" or "Innocent", ":", p:Nick())
          end
@@ -46,7 +46,7 @@ function PrintGroups(ply)
    local pr = GetPrintFn(ply)
 
    pr("User", "-", "Group")
-   for _, p in pairs(player.GetAll()) do
+   for _, p in player.Iterator() do
       pr(p:Nick(), "-", p:GetNWString("UserGroup"))
    end
 end
@@ -60,7 +60,7 @@ function PrintReport(ply)
 
       for k, e in pairs(SCORE.Events) do
          if e.id == EVENT_KILL then
-            if e.att.sid == -1 then
+            if e.att.sid64 == -1 then
                pr("<something> killed " .. e.vic.ni .. (e.vic.tr and " [TRAITOR]" or " [inno.]"))
             else
                pr(e.att.ni .. (e.att.tr and " [TRAITOR]" or " [inno.]") .. " killed " .. e.vic.ni .. (e.vic.tr and " [TRAITOR]" or " [inno.]"))
@@ -92,7 +92,7 @@ end
 concommand.Add("ttt_print_karma", PrintKarma)
 
 
-CreateConVar("ttt_highlight_admins", "1")
+CreateConVar("ttt_highlight_admins", "1", FCVAR_REPLICATED)
 local function ApplyHighlightAdmins(cv, old, new)
    SetGlobalBool("ttt_highlight_admins", tobool(tonumber(new)))
 end
@@ -167,6 +167,8 @@ local function DetectServerPlugin()
       return "evolve"
    elseif exsto and exsto.GetPlugin('administration') then
       return "exsto"
+   elseif sam and sam.player.ban then
+      return "sam"
    else
       return "gmod"
    end
@@ -194,9 +196,11 @@ local ban_functions = {
                   adm:Ban(nil, p, l, r)
                end
             end,
+   
+   sam = sam and sam.player and sam.player.ban,
 
    gmod   = StandardBan
-};
+}
 
 local function BanningFunction()
    local bantype = string.lower(ttt_bantype:GetString())

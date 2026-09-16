@@ -21,8 +21,8 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 	local Radius = Size:Length() * 0.5
 	local CamDist = Radius / math.sin( math.rad( FOV ) / 2 ) -- Works out how far the camera has to be away based on radius + fov!
 	local Center = LerpVector( 0.5, Dupe.Mins, Dupe.Maxs )
-	local CamPos = Center + Vector( -1, 0, 0.5 ):GetNormal() * CamDist
-	local EyeAng = ( Center - CamPos ):GetNormal():Angle()
+	local CamPos = Center + Vector( -1, 0, 0.5 ):GetNormalized() * CamDist
+	local EyeAng = ( Center - CamPos ):GetNormalized():Angle()
 
 	--
 	-- The base view
@@ -43,16 +43,16 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 	-- Create a bunch of entities we're gonna use to render.
 	--
 	local entities = {}
+	local i = 0
+	for k, ent in pairs( Dupe.Entities ) do
 
-	for k, v in pairs( Dupe.Entities ) do
+		if ( ent.Class == "prop_ragdoll" ) then
 
-		if ( v.Class == "prop_ragdoll" ) then
+			entities[ k ] = ClientsideRagdoll( ent.Model or "error.mdl", RENDERGROUP_OTHER )
 
-			entities[k] = ClientsideRagdoll( v.Model or "error.mdl", RENDERGROUP_OTHER )
+			if ( istable( ent.PhysicsObjects ) ) then
 
-			if ( istable( v.PhysicsObjects ) ) then
-
-				for boneid, v in pairs( v.PhysicsObjects ) do
+				for boneid, v in pairs( ent.PhysicsObjects ) do
 
 					local obj = entities[ k ]:GetPhysicsObjectNum( boneid )
 					if ( IsValid( obj ) ) then
@@ -68,9 +68,10 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 
 		else
 
-			entities[ k ] = ClientsideModel( v.Model or "error.mdl", RENDERGROUP_OTHER )
+			entities[ k ] = ClientsideModel( ent.Model or "error.mdl", RENDERGROUP_OTHER )
 
 		end
+		i = i + 1
 
 	end
 
@@ -87,63 +88,71 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 	--
 	render.SuppressEngineLighting( true )
 
-	local BorderSize	= CamDist * 0.004
-	local Up			= EyeAng:Up() * BorderSize
-	local Right			= EyeAng:Right() * BorderSize
+	-- Rendering icon the way we do is kinda bad and will crash the game with too many entities in the dupe
+	-- Try to mitigate that to some degree by not rendering the outline when we are above 800 entities
+	-- 1000 was tested without problems, but we want to give it some space as 1000 was tested in "perfect conditions" with nothing else happening on the map
+	if ( i < 800 ) then
+		local BorderSize	= CamDist * 0.004
+		local Up			= EyeAng:Up() * BorderSize
+		local Right			= EyeAng:Right() * BorderSize
 
-	render.SetColorModulation( 1, 1, 1, 1 )
-	render.MaterialOverride( Material( "models/debug/debugwhite" ) )
+		render.SetColorModulation( 1, 1, 1 )
+		render.SetBlend( 1 )
+		render.MaterialOverride( Material( "models/debug/debugwhite" ) )
 
-	-- Render each entity in a circle
-	for k, v in pairs( Dupe.Entities ) do
+		-- Render each entity in a circle
+		for k, v in pairs( Dupe.Entities ) do
 
-		for i = 0, math.pi * 2, 0.2 do
+			-- Set the skin and bodygroups
+			entities[ k ]:SetSkin( v.Skin or 0 )
+			for bg_k, bg_v in pairs( v.BodyG or {} ) do entities[ k ]:SetBodygroup( bg_k, bg_v ) end
 
-			view.origin = CamPos + Up * math.sin( i ) + Right * math.cos( i )
+			for j = 0, math.tau, 0.2 do
 
-			cam.Start( view )
+				view.origin = CamPos + Up * math.sin( j ) + Right * math.cos( j )
+				cam.Start( view )
+
+					render.Model( {
+						model	= v.Model,
+						pos		= v.Pos,
+						angle	= v.Angle
+					}, entities[ k ] )
+
+				cam.End()
+
+			end
+
+		end
+
+		-- Because we just messed up the depth
+		render.ClearDepth()
+		render.SetColorModulation( 0, 0, 0 )
+		render.SetBlend( 1 )
+
+		-- Try to keep the border size consistent with zoom size
+		BorderSize	= CamDist * 0.002
+		Up			= EyeAng:Up() * BorderSize
+		Right		= EyeAng:Right() * BorderSize
+
+		-- Render each entity in a circle
+		for k, v in pairs( Dupe.Entities ) do
+
+			for j = 0, math.tau, 0.2 do
+
+				view.origin = CamPos + Up * math.sin( j ) + Right * math.cos( j )
+				cam.Start( view )
 
 				render.Model( {
 					model	= v.Model,
 					pos		= v.Pos,
-					angle	= v.Angle,
-
+					angle	= v.Angle
 				}, entities[ k ] )
 
-			cam.End()
+				cam.End()
+
+			end
 
 		end
-
-	end
-
-	-- Because ee just messed up the depth
-	render.ClearDepth()
-	render.SetColorModulation( 0, 0, 0, 1 )
-
-	-- Try to keep the border size consistent with zoom size
-	local BorderSize	= CamDist * 0.002
-	local Up			= EyeAng:Up() * BorderSize
-	local Right			= EyeAng:Right() * BorderSize
-
-	-- Render each entity in a circle
-	for k, v in pairs( Dupe.Entities ) do
-
-		for i = 0, math.pi * 2, 0.2 do
-
-			view.origin = CamPos + Up * math.sin( i ) + Right * math.cos( i )
-			cam.Start( view )
-
-			render.Model( {
-				model	= v.Model,
-				pos		= v.Pos,
-				angle	= v.Angle,
-				skin	= v.Skin
-			}, entities[ k ] )
-
-			cam.End()
-
-		end
-
 	end
 
 	--
@@ -168,12 +177,21 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 	-- Render each model
 	for k, v in pairs( Dupe.Entities ) do
 
-		render.SetColorModulation( 1, 1, 1, 1 )
+		render.SetColorModulation( 1, 1, 1 )
+		render.SetBlend( 1 )
+
+		-- EntityMods override this
+		if ( v._DuplicatedColor ) then
+			render.SetColorModulation( v._DuplicatedColor.r / 255, v._DuplicatedColor.g / 255, v._DuplicatedColor.b / 255 )
+			--render.SetBlend( v._DuplicatedColor.a / 255 )
+		end
+		if ( v._DuplicatedMaterial ) then render.MaterialOverride( Material( v._DuplicatedMaterial ) ) end
 
 		if ( istable( v.EntityMods ) ) then
 
 			if ( istable( v.EntityMods.colour ) ) then
-				render.SetColorModulation( v.EntityMods.colour.Color.r / 255, v.EntityMods.colour.Color.g / 255, v.EntityMods.colour.Color.b / 255, v.EntityMods.colour.Color.a / 255 )
+				render.SetColorModulation( v.EntityMods.colour.Color.r / 255, v.EntityMods.colour.Color.g / 255, v.EntityMods.colour.Color.b / 255 )
+				--render.SetBlend( v.EntityMods.colour.Color.a / 255 )
 			end
 
 			if ( istable( v.EntityMods.material ) ) then
@@ -185,8 +203,7 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 		render.Model( {
 			model	= v.Model,
 			pos		= v.Pos,
-			angle	= v.Angle,
-			skin	= v.Skin
+			angle	= v.Angle
 		}, entities[ k ] )
 
 		render.MaterialOverride( nil )
@@ -197,7 +214,8 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 
 	-- Enable lighting again (or it will affect outside of this loop!)
 	render.SuppressEngineLighting( false )
-	render.SetColorModulation( 1, 1, 1, 1 )
+	render.SetColorModulation( 1, 1, 1 )
+	render.SetBlend( 1 )
 
 	--
 	-- Finished with the entities - remove them all
@@ -220,19 +238,24 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 	} )
 
 	--
+	-- Try to figure out if any of the models/materials/etc came from some addon
+	--
+	duplicator.FigureOutRequiredAddons( Dupe )
+
+	--
 	-- Encode and compress the dupe
 	--
-	local Dupe = util.TableToJSON( Dupe )
-	if ( !isstring( Dupe ) ) then
-		Msg( "There was an error converting the dupe to a json string" )
+	local DupeJSON = util.TableToJSON( Dupe )
+	if ( !isstring( DupeJSON ) ) then
+		MsgN( "There was an error converting the dupe to a json string" )
 	end
 
-	Dupe = util.Compress( Dupe )
+	DupeJSON = util.Compress( DupeJSON )
 
 	--
 	-- And save it! (filename is automatic md5 in dupes/)
 	--
-	if ( engine.WriteDupe( Dupe, jpegdata ) ) then
+	if ( engine.WriteDupe( DupeJSON, jpegdata ) ) then
 
 		-- Disable the save button!!
 		hook.Run( "DupeSaveUnavailable" )
@@ -240,7 +263,7 @@ hook.Add( "PostRender", "RenderDupeIcon", function()
 
 		MsgN( "Saved!" )
 
-		-- TODO: Open tab and show dupe!
+		spawnmenu.SwitchCreationTab( "#spawnmenu.category.dupes" )
 
 	end
 

@@ -28,30 +28,43 @@ properties.Add( "bone_manipulate", {
 
 	end,
 
-	Receive = function( self, length, player )
+	Receive = function( self, length, ply )
 
 		local ent = net.ReadEntity()
 		if ( !IsValid( ent ) ) then return end
-		if ( !self:Filter( ent, player ) ) then return end
+		if ( !properties.CanBeTargeted( ent, ply ) ) then return end
+		if ( !self:Filter( ent, ply ) ) then return end
 
 		ent.widget = ents.Create( "widget_bones" )
-		ent.widget:Setup( ent )
+		if ( !IsValid( ent.widget ) ) then
+			if ( IsValid( ply ) ) then ply:PrintMessage( HUD_PRINTTALK, "Failed to create bone manipulation widget." ) end
+			ent.widget = nil
+			return
+		end
+
+		if ( !ent.widget:Setup( ent ) ) then
+			if ( IsValid( ply ) ) then ply:PrintMessage( HUD_PRINTTALK, "Failed to initialize bone manipulation widget." ) end
+			ent.widget:Remove()
+			ent.widget = nil
+			return
+		end
 		ent.widget:Spawn()
 		ent.widget.LastBonePress = 0
 		ent.widget.BonePressCount = 0
 
 		-- What happens when we click on a bone?
-		ent.widget.OnBoneClick = function( w, boneid, ply )
+		ent.widget.OnBoneClick = function( w, boneid, pl )
 
 			-- If we have an old axis, remove it
 			if ( IsValid( w.axis ) ) then w.axis:Remove() end
 
-			-- We clicked on the same bone
+			local oldBonePressCount, oldLastBonePress = w.BonePressCount, w.LastBonePress
 			if ( w.LastBonePress == boneid ) then
+				-- We clicked on the same bone
 				w.BonePressCount = w.BonePressCount + 1
 				if ( w.BonePressCount >= 3 ) then w.BonePressCount = 0 end
-			-- We clicked on a new bone!
 			else
+				-- We clicked on a new bone!
 				w.BonePressCount = 0
 				w.LastBonePress = boneid
 			end
@@ -59,7 +72,21 @@ properties.Add( "bone_manipulate", {
 			local EntityCycle = { "widget_bonemanip_move", "widget_bonemanip_rotate", "widget_bonemanip_scale" }
 
 			w.axis = ents.Create( EntityCycle[ w.BonePressCount + 1 ] )
-			w.axis:Setup( ent, boneid, w.BonePressCount == 1 )
+			if ( !IsValid( w.axis ) ) then
+				if ( IsValid( ply ) ) then ply:PrintMessage( HUD_PRINTTALK, "Failed to create bone manipulation pivot." ) end
+				w.axis = nil
+				w.BonePressCount = oldBonePressCount
+				w.LastBonePress = oldLastBonePress
+				return
+			end
+			if ( !w.axis:Setup( ent, boneid, w.BonePressCount == 1 ) ) then
+				if ( IsValid( ply ) ) then ply:PrintMessage( HUD_PRINTTALK, "Failed to initialize bone manipulation pivot." ) end
+				w.axis:Remove()
+				w.axis = nil
+				w.BonePressCount = oldBonePressCount
+				w.LastBonePress = oldLastBonePress
+				return
+			end
 			w.axis:Spawn()
 			w.axis:SetPriority( 0.5 )
 			w:DeleteOnRemove( w.axis )
@@ -92,7 +119,7 @@ properties.Add( "bone_manipulate_end", {
 
 	end,
 
-	Receive = function( self, length, player )
+	Receive = function( self, length, ply )
 
 		local ent = net.ReadEntity()
 		if ( !IsValid( ent ) ) then return end

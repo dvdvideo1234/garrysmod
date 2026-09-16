@@ -54,9 +54,16 @@ function GM:HUDShouldDraw( name )
 
 		local wep = ply:GetActiveWeapon()
 
-		if ( IsValid( wep ) && wep.HUDShouldDraw != nil ) then
+		if ( IsValid( wep ) ) then
 
-			return wep.HUDShouldDraw( wep, name )
+			local fShouldDraw = wep.HUDShouldDraw
+
+			if ( isfunction( fShouldDraw ) ) then
+
+				local ret = fShouldDraw( wep, name )
+				if ( ret != nil ) then return ret end
+
+			end
 
 		end
 
@@ -141,31 +148,34 @@ function GM:OnPlayerChat( player, strText, bTeamOnly, bPlayerIsDead )
 	--
 	-- I've made this all look more complicated than it is. Here's the easy version
 	--
-	-- chat.AddText( player, Color( 255, 255, 255 ), ": ", strText )
+	-- chat.AddText( player, color_white, ": ", strText )
 	--
 
 	local tab = {}
 
 	if ( bPlayerIsDead ) then
 		table.insert( tab, Color( 255, 30, 40 ) )
-		table.insert( tab, "*DEAD* " )
+		table.insert( tab, language.GetPhrase( "chat.dead" ) .. " " )
 	end
 
 	if ( bTeamOnly ) then
 		table.insert( tab, Color( 30, 160, 40 ) )
-		table.insert( tab, "(TEAM) " )
+		table.insert( tab, language.GetPhrase( "chat.team" ) .. " " )
 	end
 
 	if ( IsValid( player ) ) then
 		table.insert( tab, player )
 	else
-		table.insert( tab, "Console" )
+		table.insert( tab, language.GetPhrase( "chat.console" ) )
 	end
 
-	table.insert( tab, Color( 255, 255, 255 ) )
-	table.insert( tab, ": " .. strText )
+	local filter_context = TEXT_FILTER_GAME_CONTENT
+	if ( bit.band( GetConVarNumber( "cl_chatfilters" ), 64 ) != 0 ) then filter_context = TEXT_FILTER_CHAT end
 
-	chat.AddText( unpack(tab) )
+	table.insert( tab, color_white )
+	table.insert( tab, ": " .. util.FilterText( strText, filter_context, IsValid( player ) and player or nil ) )
+
+	chat.AddText( unpack( tab ) )
 
 	return true
 
@@ -178,7 +188,7 @@ end
 function GM:OnChatTab( str )
 
 	str = string.TrimRight(str)
-	
+
 	local LastWord
 	for word in string.gmatch( str, "[^ ]+" ) do
 		LastWord = word
@@ -186,7 +196,7 @@ function GM:OnChatTab( str )
 
 	if ( LastWord == nil ) then return str end
 
-	for k, v in pairs( player.GetAll() ) do
+	for k, v in player.Iterator() do
 
 		local nickname = v:Nick()
 
@@ -295,7 +305,7 @@ end
 function GM:CalcVehicleView( Vehicle, ply, view )
 
 	if ( Vehicle.GetThirdPersonMode == nil || ply:GetViewEntity() != ply ) then
-		-- This hsouldn't ever happen.
+		-- This shouldn't ever happen.
 		return
 	end
 
@@ -320,7 +330,7 @@ function GM:CalcVehicleView( Vehicle, ply, view )
 		endpos = TargetOrigin,
 		filter = function( e )
 			local c = e:GetClass() -- Avoid contact with entities that can potentially be attached to the vehicle. Ideally, we should check if "e" is constrained to "Vehicle".
-			return !c:StartWith( "prop_physics" ) &&!c:StartWith( "prop_dynamic" ) && !c:StartWith( "prop_ragdoll" ) && !e:IsVehicle() && !c:StartWith( "gmod_" )
+			return !c:StartsWith( "prop_physics" ) &&!c:StartsWith( "prop_dynamic" ) && !c:StartsWith( "phys_bone_follower" ) && !c:StartsWith( "prop_ragdoll" ) && !e:IsVehicle() && !c:StartsWith( "gmod_" )
 		end,
 		mins = Vector( -WallOffset, -WallOffset, -WallOffset ),
 		maxs = Vector( WallOffset, WallOffset, WallOffset ),
@@ -349,13 +359,14 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
 	local Vehicle	= ply:GetVehicle()
 	local Weapon	= ply:GetActiveWeapon()
 
-	local view = {}
-	view.origin		= origin
-	view.angles		= angles
-	view.fov		= fov
-	view.znear		= znear
-	view.zfar		= zfar
-	view.drawviewer	= false
+	local view = {
+		["origin"] = origin,
+		["angles"] = angles,
+		["fov"] = fov,
+		["znear"] = znear,
+		["zfar"] = zfar,
+		["drawviewer"] = false,
+	}
 
 	--
 	-- Let the vehicle override the view and allows the vehicle view to be hooked
@@ -372,12 +383,13 @@ function GM:CalcView( ply, origin, angles, fov, znear, zfar )
 	--
 	player_manager.RunClass( ply, "CalcView", view )
 
-	-- Give the active weapon a go at changing the viewmodel position
+	-- Give the active weapon a go at changing the view
 	if ( IsValid( Weapon ) ) then
 
 		local func = Weapon.CalcView
 		if ( func ) then
-			view.origin, view.angles, view.fov = func( Weapon, ply, origin * 1, angles * 1, fov ) -- Note: *1 to copy the object so the child function can't edit it.
+			local origin, angles, fov = func( Weapon, ply, Vector( view.origin ), Angle( view.angles ), view.fov ) -- Note: Constructor to copy the object so the child function can't edit it.
+			view.origin, view.angles, view.fov = origin or view.origin, angles or view.angles, fov or view.fov
 		end
 
 	end
@@ -403,14 +415,14 @@ end
 		The return is a fraction of the normal sensitivity (0.5 would be half as sensitive)
 		Return -1 to not override.
 -----------------------------------------------------------]]
-function GM:AdjustMouseSensitivity( fDefault )
+function GM:AdjustMouseSensitivity( fDefault, fLocalFOV, fDefaultFOV )
 
 	local ply = LocalPlayer()
 	if ( !IsValid( ply ) ) then return -1 end
 
 	local wep = ply:GetActiveWeapon()
 	if ( wep && wep.AdjustMouseSensitivity ) then
-		return wep:AdjustMouseSensitivity()
+		return wep:AdjustMouseSensitivity( fDefault, fLocalFOV, fDefaultFOV )
 	end
 
 	return -1
@@ -540,24 +552,24 @@ end
 	Name: gamemode:CalcViewModelView()
 	Desc: Called to set the view model's position
 -----------------------------------------------------------]]
-function GM:CalcViewModelView( Weapon, ViewModel, OldEyePos, OldEyeAng, EyePos, EyeAng )
+function GM:CalcViewModelView( wep, vm, oldEyePos, oldEyeAng, eyePos, eyeAng )
 
-	if ( !IsValid( Weapon ) ) then return end
+	if ( !IsValid( wep ) ) then return end
 
-	local vm_origin, vm_angles = EyePos, EyeAng
+	local vm_origin, vm_angles = eyePos, eyeAng
 
 	-- Controls the position of all viewmodels
-	local func = Weapon.GetViewModelPosition
+	local func = wep.GetViewModelPosition
 	if ( func ) then
-		local pos, ang = func( Weapon, EyePos*1, EyeAng*1 )
+		local pos, ang = func( wep, eyePos*1, eyeAng*1 )
 		vm_origin = pos or vm_origin
 		vm_angles = ang or vm_angles
 	end
 
 	-- Controls the position of individual viewmodels
-	func = Weapon.CalcViewModelView
+	func = wep.CalcViewModelView
 	if ( func ) then
-		local pos, ang = func( Weapon, ViewModel, OldEyePos*1, OldEyeAng*1, EyePos*1, EyeAng*1 )
+		local pos, ang = func( wep, vm, oldEyePos*1, oldEyeAng*1, eyePos*1, eyeAng*1 )
 		vm_origin = pos or vm_origin
 		vm_angles = ang or vm_angles
 	end
@@ -570,14 +582,14 @@ end
 	Name: gamemode:PreDrawViewModel()
 	Desc: Called before drawing the view model
 -----------------------------------------------------------]]
-function GM:PreDrawViewModel( ViewModel, Player, Weapon )
+function GM:PreDrawViewModel( vm, ply, wep, flags )
 
-	if ( !IsValid( Weapon ) ) then return false end
+	if ( !IsValid( wep ) ) then return false end
 
-	player_manager.RunClass( Player, "PreDrawViewModel", ViewModel, Weapon )
+	player_manager.RunClass( ply, "PreDrawViewModel", vm, wep, flags )
 
-	if ( Weapon.PreDrawViewModel == nil ) then return false end
-	return Weapon:PreDrawViewModel( ViewModel, Weapon, Player )
+	if ( wep.PreDrawViewModel == nil ) then return false end
+	return wep:PreDrawViewModel( vm, wep, ply, flags )
 
 end
 
@@ -585,33 +597,33 @@ end
 	Name: gamemode:PostDrawViewModel()
 	Desc: Called after drawing the view model
 -----------------------------------------------------------]]
-function GM:PostDrawViewModel( ViewModel, Player, Weapon )
+function GM:PostDrawViewModel( vm, ply, wep, flags )
 
-	if ( !IsValid( Weapon ) ) then return false end
+	if ( !IsValid( wep ) ) then return false end
 
-	if ( Weapon.UseHands || !Weapon:IsScripted() ) then
+	if ( wep.UseHands || !wep:IsScripted() ) then
 
-		local hands = Player:GetHands()
-		if ( IsValid( hands ) ) then
+		local hands = ply:GetHands()
+		if ( IsValid( hands ) && IsValid( hands:GetParent() ) ) then
 
-			if ( not hook.Call( "PreDrawPlayerHands", self, hands, ViewModel, Player, Weapon ) ) then
+			if ( not hook.Call( "PreDrawPlayerHands", self, hands, vm, ply, wep, flags ) ) then
 
-				if ( Weapon.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
-				hands:DrawModel()
+				if ( wep.ViewModelFlip ) then render.CullMode( MATERIAL_CULLMODE_CW ) end
+				hands:DrawModel( flags )
 				render.CullMode( MATERIAL_CULLMODE_CCW )
 
 			end
 
-			hook.Call( "PostDrawPlayerHands", self, hands, ViewModel, Player, Weapon )
-			
+			hook.Call( "PostDrawPlayerHands", self, hands, vm, ply, wep, flags )
+
 		end
 
 	end
 
-	player_manager.RunClass( Player, "PostDrawViewModel", ViewModel, Weapon )
+	player_manager.RunClass( ply, "PostDrawViewModel", vm, wep, flags )
 
-	if ( Weapon.PostDrawViewModel == nil ) then return false end
-	return Weapon:PostDrawViewModel( ViewModel, Weapon, Player )
+	if ( wep.PostDrawViewModel == nil ) then return false end
+	return wep:PostDrawViewModel( vm, wep, ply, flags )
 
 end
 
@@ -674,6 +686,23 @@ end
 	Desc: The mouse has been released on the game screen
 -----------------------------------------------------------]]
 function GM:GUIMouseReleased( mousecode, AimVector )
+end
+
+--[[---------------------------------------------------------
+	Player class has been changed
+-----------------------------------------------------------]]
+function GM:PlayerClassChanged( ply, newID )
+
+	-- No class is set
+	if ( newID < 1 ) then return end
+
+	-- Invalid class ID?
+	local classname = util.NetworkIDToString( newID )
+	if ( !classname ) then return end
+
+	-- Initialize the class on client
+	player_manager.SetPlayerClass( ply, classname )
+
 end
 
 function GM:PreDrawHUD()

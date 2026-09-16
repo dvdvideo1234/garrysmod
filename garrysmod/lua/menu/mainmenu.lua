@@ -1,15 +1,19 @@
 
-include( 'background.lua' )
-include( 'cef_credits.lua' )
-include( 'openurl.lua' )
+include( "background.lua" )
+include( "cef_credits.lua" )
+include( "crosshair_setup.lua" )
+include( "openurl.lua" )
+include( "ugcpublish.lua" )
 
 pnlMainMenu = nil
+local pnlMainMenuFallback = nil
 
 local PANEL = {}
 
 function PANEL:Init()
 
 	self:Dock( FILL )
+	self:SetSize( ScrW(), ScrH() ) -- Do not wait for docking to set our size
 	self:SetKeyboardInputEnabled( true )
 	self:SetMouseInputEnabled( true )
 
@@ -18,14 +22,33 @@ function PANEL:Init()
 	JS_Language( self.HTML )
 	JS_Utility( self.HTML )
 	JS_Workshop( self.HTML )
+	self.HTML:AddFunction( "lua", "Run", function( param, ... )
+		local args = { ... }
+		for id, arg in pairs( args ) do
+			if ( isstring( arg ) ) then
+				args[ id ] = string.format( "%q", arg )
+			end
+		end
+
+		RunString( param:format( unpack( args ) ) )
+	end )
+	self.HTML:AddFunction( "lua", "PlaySound", function( param ) surface.PlaySound( param ) end )
+
+	-- Detect whenther the HTML engine is even there
+	self.menuLoaded = false
+	self.HTML.OnBeginLoadingDocument = function()
+		self.menuLoaded = true
+		if ( IsValid( pnlMainMenuFallback ) ) then pnlMainMenuFallback:Remove() end
+	end
 
 	self.HTML:Dock( FILL )
 	self.HTML:OpenURL( "asset://garrysmod/html/menu.html" )
 	self.HTML:SetKeyboardInputEnabled( true )
 	self.HTML:SetMouseInputEnabled( true )
-	self.HTML:SetAllowLua( true )
 	self.HTML:RequestFocus()
+	self.HTML:SetSize( ScrW(), ScrH() )
 
+	ws_dupe.HTML = self.HTML
 	ws_save.HTML = self.HTML
 	addon.HTML = self.HTML
 	demo.HTML = self.HTML
@@ -43,13 +66,16 @@ end
 function PANEL:ScreenshotScan( folder )
 
 	local bReturn = false
-
 	local Screenshots = file.Find( folder .. "*.*", "GAME" )
-	for k, v in RandomPairs( Screenshots ) do
 
+	-- The system will always check materials/ folder first, and the default backgrounds are one folder up
+	-- So optimize the lookup by having it check the correct folder to begin with
+	-- Doesn't work well for workshop mounted gamemode content, so we only do it for base game backgrounds
+	if ( folder == "backgrounds/" ) then folder = "../" .. folder end
+
+	for _, v in ipairs( Screenshots ) do
 		AddBackgroundImage( folder .. v )
 		bReturn = true
-
 	end
 
 	return bReturn
@@ -67,13 +93,25 @@ function PANEL:Paint()
 		if ( self.IsInGame ) then
 
 			if ( IsValid( self.InnerPanel ) ) then self.InnerPanel:Remove() end
-			self.HTML:QueueJavascript( "SetInGame( true )" )
+			self:Call( "SetInGame( true )" )
 
 		else
 
-			self.HTML:QueueJavascript( "SetInGame( false )" )
+			self:Call( "SetInGame( false )" )
 
 		end
+	end
+
+	if ( !self.IsInGame ) then return end
+
+	local canAdd = CanAddServerToFavorites()
+	local isFav = serverlist.IsCurrentServerFavorite()
+	if ( self.CanAddServerToFavorites != canAdd or self.IsCurrentServerFavorite != isFav ) then
+
+		self.CanAddServerToFavorites = canAdd
+		self.IsCurrentServerFavorite = isFav
+
+		self:Call( "SetShowFavButton( " .. tostring( self.CanAddServerToFavorites ) .. ", " .. tostring( self.IsCurrentServerFavorite ) .. " )" )
 
 	end
 
@@ -82,7 +120,6 @@ end
 function PANEL:RefreshContent()
 
 	self:RefreshGamemodes()
-	self:RefreshAddons()
 
 end
 
@@ -90,15 +127,15 @@ function PANEL:RefreshGamemodes()
 
 	local json = util.TableToJSON( engine.GetGamemodes() )
 
-	self.HTML:QueueJavascript( "UpdateGamemodes( " .. json .. " )" )
+	self:Call( "UpdateGamemodes( " .. json .. " )" )
 	self:UpdateBackgroundImages()
-	self.HTML:QueueJavascript( "UpdateCurrentGamemode( '" .. engine.ActiveGamemode() .. "' )" )
+	self:Call( "UpdateCurrentGamemode( '" .. engine.ActiveGamemode():JavascriptSafe() .. "' )" )
 
 end
 
-function PANEL:RefreshAddons()
+function PANEL:SetProblemCount( problems, severity )
 
-	-- TODO
+	self:Call( "SetProblemCount(" .. problems .. ", " .. severity .. ")" )
 
 end
 
@@ -130,39 +167,59 @@ end
 
 vgui.Register( "MainMenuPanel", PANEL, "EditablePanel" )
 
-function UpdateSteamName( id, time )
+local PANEL = {}
 
-	if ( !id ) then return end
-
-	if ( !time ) then time = 0.2 end
-
-	local name = steamworks.GetPlayerName( id )
-	if ( name != "" && name != "[unknown]" ) then
-
-		pnlMainMenu:Call( "SteamName( \"" .. id .. "\", \"" .. name .. "\" )" )
-		return
-
-	end
-
-	steamworks.RequestPlayerInfo( id )
-	timer.Simple( time, function() UpdateSteamName( id, time + 0.2 ) end )
-
+function PANEL:SetText( txt )
+	self.Text = txt
 end
 
---
--- Called from JS when starting a new game
---
-function UpdateMapList()
+function PANEL:Paint( w, h )
+	-- Draw the text
+	local parsed = markup.Parse( self.Text, self:GetParent():GetWide() )
+	parsed:Draw( 0, 0 )
 
-	local MapList = GetMapList()
-	if ( !MapList ) then return end
-
-	local json = util.TableToJSON( MapList )
-	if ( !json ) then return end
-
-	pnlMainMenu:Call( "UpdateMaps(" .. json .. ")" )
-
+	-- Size to contents. Ew.
+	self:SetSize( parsed:GetWidth(), parsed:GetHeight() )
 end
+
+-- TODO: Maybe this panel belongs in client realm as well?
+local markupPanel = vgui.RegisterTable( PANEL, "Panel" )
+
+function OnMenuFailedToLoad()
+	local frame = vgui.Create( "DFrame" )
+	frame:SetSize( ScrW() / 2, ScrH() / 2 )
+	frame:Center()
+	frame:SetDraggable( false )
+	frame:ShowCloseButton( false )
+	frame:SetTitle( "Menu failed to load" )
+	frame:MakePopup()
+
+	pnlMainMenuFallback = frame
+
+	local lbl = vgui.CreateFromTable( markupPanel, frame )
+	lbl:Dock( TOP )
+	lbl:DockMargin( 0, 0, 0, 5 )
+	lbl:SetText( "Looks like the main menu failed to load.\n\nThis could be due to missing game files (run verification of game file integrity through Steam), or the HTML engine failed to load.\n\nBelow are some simple options to exit the game." )
+
+	local btn_srv = frame:Add( "DButton" )
+	btn_srv:Dock( TOP )
+	btn_srv:DockMargin( 0, 0, 0, 5 )
+	btn_srv:SetText( "#find_mp_game" )
+	btn_srv:SetConsoleCommand( "gamemenucommand", "OpenServerBrowser" )
+
+	local btn_opt = frame:Add( "DButton" )
+	btn_opt:Dock( TOP )
+	btn_opt:DockMargin( 0, 0, 0, 5 )
+	btn_opt:SetText( "#options" )
+	btn_opt:SetConsoleCommand( "gamemenucommand", "OpenOptionsDialog" )
+
+	local btn_exit = frame:Add( "DButton" )
+	btn_exit:Dock( TOP )
+	btn_exit:DockMargin( 0, 0, 0, 5 )
+	btn_exit:SetText( "#quit" )
+	btn_exit.DoClick = function() RunGameUICommand( "quit" ) end
+end
+
 
 --
 -- Called from JS when starting a new game
@@ -172,7 +229,8 @@ function UpdateServerSettings()
 	local array = {
 		hostname = GetConVarString( "hostname" ),
 		sv_lan = GetConVarString( "sv_lan" ),
-		p2p_enabled = GetConVarString( "p2p_enabled" )
+		p2p_enabled = GetConVarString( "p2p_enabled" ),
+		p2p_friendsonly = GetConVarString( "p2p_friendsonly" )
 	}
 
 	local settings_file = file.Read( "gamemodes/" .. engine.ActiveGamemode() .. "/" .. engine.ActiveGamemode() .. ".txt", true )
@@ -181,13 +239,18 @@ function UpdateServerSettings()
 
 		local Settings = util.KeyValuesToTable( settings_file )
 
-		if ( Settings.settings ) then
+		if ( istable( Settings.settings ) ) then
 
-			array.settings = Settings.settings
+			array.settings = {}
+			for k, v in pairs( Settings.settings ) do
+				if ( !v.name ) then continue end
 
-			for k, v in pairs( array.settings ) do
-				v.Value = GetConVarString( v.name )
-				v.Singleplayer = v.singleplayer && true || false
+				local cvar = GetConVar( v.name )
+				if ( !cvar ) then continue end
+
+				array.settings[ k ] = v
+				array.settings[ k ].Value = cvar:GetString()
+				array.settings[ k ].Singleplayer = v.singleplayer and true or false
 			end
 
 		end
@@ -207,48 +270,184 @@ function GetPlayerList( serverip )
 	serverlist.PlayerList( serverip, function( tbl )
 
 		local json = util.TableToJSON( tbl )
-		pnlMainMenu:Call( "SetPlayerList( '" .. serverip .. "', " .. json .. ")" )
+		pnlMainMenu:Call( "SetPlayerList( '" .. serverip:JavascriptSafe() .. "', " .. json .. ")" )
 
 	end )
 
 end
 
+local BlackList = {
+	Addresses = {},
+	Hostnames = {},
+	Descripts = {},
+	Gamemodes = {},
+	Maps = {},
+}
+
+local NewsList = {}
+
+GetAPIManifest( function( result )
+	result = util.JSONToTable( result )
+	if ( !result ) then return end
+
+	NewsList = result.News and result.News.Blogs or {}
+	LoadNewsList()
+
+	for k, v in pairs( result.Servers and result.Servers.Banned or {} ) do
+		if ( v:StartsWith( "map:" ) ) then
+			table.insert( BlackList.Maps, v:sub( 5 ) )
+		elseif ( v:StartsWith( "host:" ) or v:StartsWith( "name:" ) ) then
+			table.insert( BlackList.Hostnames, v:sub( 6 ) )
+		elseif ( v:StartsWith( "desc:" ) ) then
+			table.insert( BlackList.Descripts, v:sub( 6 ) )
+		elseif ( v:StartsWith( "gm:" ) ) then
+			table.insert( BlackList.Gamemodes, v:sub( 4 ) )
+		else
+			table.insert( BlackList.Addresses, v )
+		end
+	end
+end )
+
+function LoadNewsList()
+	if ( !pnlMainMenu ) then return end
+
+	local json = util.TableToJSON( NewsList )
+	local bHide = cookie.GetString( "hide_newslist", "false" ) == "true"
+
+	pnlMainMenu:Call( "UpdateNewsList(" .. json .. ", " .. tostring( bHide ) .. " )" )
+end
+
+function SaveHideNews( bHide )
+	cookie.Set( "hide_newslist", tostring( bHide ) )
+end
+
+function IsServerBlacklisted( address, hostname, description, gm, map )
+	local addressNoPort = address:match( "[^:]*" )
+
+	for k, v in ipairs( BlackList.Addresses ) do
+		if ( address == v or addressNoPort == v ) then
+			return v
+		end
+
+		if ( v:EndsWith( "*" ) and address:sub( 1, v:len() - 1 ) == v:sub( 1, v:len() - 1 ) ) then return v end
+
+		-- IP Ranges
+		if ( string.find( v, "/", 1, false ) ) then
+			local o1, o2, o3, o4, o5 = string.match( v, "(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)/(%d%d?)" )
+			local blacklistedIP = 2 ^ 24 * o1 + 2 ^ 16 * o2 + 2 ^ 8 * o3 + o4
+
+			local mask = bit.lshift( 0xFFFFFFFF, 32-o5 )
+
+			o1, o2, o3, o4 = string.match( address, "(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)" )
+			local testIP = 2 ^ 24 * o1 + 2 ^ 16 * o2 + 2 ^ 8 * o3 + o4
+
+			if ( bit.band( testIP, mask ) == bit.band( blacklistedIP, mask ) ) then return v end
+		end
+	end
+
+	for k, v in ipairs( BlackList.Hostnames ) do
+		if ( string.match( hostname, v ) or string.match( hostname:lower(), v ) ) then
+			return "host: " .. v
+		end
+	end
+
+	for k, v in ipairs( BlackList.Descripts ) do
+		if ( string.match( description, v ) or string.match( description:lower(), v ) ) then
+			return "desc: " .. v
+		end
+	end
+
+	for k, v in ipairs( BlackList.Gamemodes ) do
+		if ( string.match( gm, v ) or string.match( gm:lower(), v ) ) then
+			return "gm: " .. v
+		end
+	end
+
+	for k, v in ipairs( BlackList.Maps ) do
+		if ( string.match( map, v ) or string.match( map:lower(), v ) ) then
+			return "map: " .. v
+		end
+	end
+
+	return nil
+end
+
 local Servers = {}
 local ShouldStop = {}
 
-function GetServers( type, id )
+local function SendServer( pnlMainMenu, category, id,
+	ping, name, desc, map, players, maxplayers, botplayers, pass, lastplayed, address, gm, workshopid, isAnon, netVersion, luaVersion, loc, gmcat )
 
-	ShouldStop[ type ] = false
-	Servers[ type ] = {}
+	name = string.JavascriptSafe( name )
+	desc = string.JavascriptSafe( desc )
+	map = string.JavascriptSafe( map )
+	address = string.JavascriptSafe( address )
+	gm = string.JavascriptSafe( gm )
+	workshopid = string.JavascriptSafe( workshopid )
+	netVersion = string.JavascriptSafe( tostring( netVersion ) )
+	loc = string.JavascriptSafe( loc )
+	gmcat = string.JavascriptSafe( gmcat )
+
+	pnlMainMenu:Call( string.format( [[AddServer( "%s", "%s", %i, "%s", "%s", "%s", %i, %i, %i, %s, %i, "%s", "%s", "%s", %s, "%s", "%s", "%s" , "%s" )]],
+		category, id, ping, name, desc, map, players, maxplayers, botplayers, tostring( pass ), lastplayed, address, gm, workshopid,
+		tostring( isAnon ), netVersion, tostring( serverlist.IsServerFavorite( address ) ), loc, gmcat ) )
+
+
+end
+
+function GetServers( category, id )
+
+	category = string.JavascriptSafe( category )
+	id = string.JavascriptSafe( id )
+
+	ShouldStop[ category ] = false
+	Servers[ category ] = {}
 
 	local data = {
-		Callback = function( ping , name, desc, map, players, maxplayers, botplayers, pass, lastplayed, address, gamemode, workshopid )
+		Callback = function( ping, name, desc, map, players, maxplayers, botplayers, pass, lastplayed, address, gm, workshopid, isAnon, netVersion, luaVersion, loc, gmcat )
 
-			if Servers[ type ] && Servers[ type ][ address ] then return end
-			Servers[ type ][ address ] = true
+			if ( Servers[ category ] and Servers[ category ][ address ] ) then print( "Server Browser Error!", address, category ) return end
+			Servers[ category ][ address ] = true
 
-			name = string.JavascriptSafe( name )
-			desc = string.JavascriptSafe( desc )
-			map = string.JavascriptSafe( map )
-			address = string.JavascriptSafe( address )
-			gamemode = string.JavascriptSafe( gamemode )
-			workshopid = string.JavascriptSafe( workshopid )
+			local blackListMatch = IsServerBlacklisted( address, name, desc, gm, map )
+			if ( blackListMatch == nil ) then
 
-			if ( pass ) then pass = "true" else pass = "false" end
+				SendServer( pnlMainMenu, category, id,
+					ping, name, desc, map, players, maxplayers, botplayers, pass, lastplayed, address, gm, workshopid,
+					isAnon, netVersion, luaVersion, loc, gmcat )
 
-			pnlMainMenu:Call( "AddServer( '"..type.."', '"..id.."', "..ping..", \""..name.."\", \""..desc.."\", \""..map.."\", "..players..", "..maxplayers..", "..botplayers..", "..pass..", "..lastplayed..", \""..address.."\", \""..gamemode.."\", \""..workshopid.."\" )" )
+			else
 
-			return !ShouldStop[ type ]
+				Msg( "Ignoring server '", name, "' @ ", address, " - ", blackListMatch, " is blacklisted\n" )
+
+			end
+
+			return !ShouldStop[ category ]
+
+		end,
+
+		CallbackFailed = function( address )
+
+			if ( Servers[ category ] and Servers[ category ][ address ] ) then print( "Server Browser Error!", address, category ) return end
+			Servers[ category ][ address ] = true
+
+			local version = string.JavascriptSafe( tostring( VERSION ) )
+
+			SendServer( pnlMainMenu, category, id,
+				2000, language.FormatPhrase( "server_noresponse", address ), language.GetPhrase( "server_gamemode_unreachable" ), "no_map", 0, 2, 0, "false", 0, address, "unkn", "0",
+				"true", version, tostring( serverlist.IsServerFavorite( address ) ), "", "" )
+
+			return !ShouldStop[ category ]
 
 		end,
 
 		Finished = function()
-			pnlMainMenu:Call( "FinishedServeres( '" .. type .. "' )" )
-			Servers[ type ] = {}
+			pnlMainMenu:Call( "FinishedServers( '" .. category:JavascriptSafe() .. "' )" )
+			Servers[ category ] = {}
 		end,
 
-		Type = type,
-		GameDir = 'garrysmod',
+		Type = category,
+		GameDir = "garrysmod",
 		AppID = 4000,
 	}
 
@@ -256,10 +455,84 @@ function GetServers( type, id )
 
 end
 
-function DoStopServers( type )
-	pnlMainMenu:Call( "FinishedServeres( '" .. type .. "' )" )
-	ShouldStop[ type ] = true
-	Servers[ type ] = {}
+function DoStopServers( category )
+	pnlMainMenu:Call( "FinishedServers( '" .. category:JavascriptSafe() .. "' )" )
+	ShouldStop[ category ] = true
+	Servers[ category ] = {}
+end
+
+function PingServer( srvAddress )
+
+	serverlist.PingServer( srvAddress, function( ping, name, desc, map, players, maxplayers, botplayers, pass, lastplayed, address, gm, workshopid, isAnon, netVersion, luaVersion, loc, gmcat )
+
+		if ( !name ) then return end
+
+		name = string.JavascriptSafe( name )
+		map = string.JavascriptSafe( map )
+		address = string.JavascriptSafe( address )
+
+		pnlMainMenu:Call( string.format( [[UpdateServer( "%s", %i, "%s", "%s", %i, %i, %i, %s )]],
+			address, ping, name, map, players, maxplayers, botplayers, tostring( pass ) ) )
+
+	end )
+
+end
+
+function FindServersAtAddress( inputStr )
+
+	local hasPort = string.find( inputStr, ":", 0, true )
+
+	local addresses = {}
+	if ( hasPort ) then
+		table.insert( addresses, inputStr )
+	else
+		for i = 0, 5 do
+			table.insert( addresses, inputStr .. ":" .. tostring( 27015 + i ) )
+			table.insert( addresses, inputStr .. ":" .. tostring( 26900 + i ) )
+		end
+
+	end
+
+	local output = {}
+	for i, addr in ipairs( addresses ) do
+
+		serverlist.PingServer( addr, function( ping, name, desc, map, players, maxplayers, botplayers, pass, lastplayed, address, gm, ... )
+
+			if ( !name ) then
+				table.insert( output, {
+					name = language.FormatPhrase( "server_noresponse", addr ),
+					address = addr, ping = 2000, favorite = false,
+					players = 0, maxplayers = 0, botplayers = 0,
+					map = "", gamemode = ""
+				} )
+			else
+				name = string.JavascriptSafe( name )
+				map = string.JavascriptSafe( map )
+				address = string.JavascriptSafe( address )
+				gm = string.JavascriptSafe( gm )
+
+				table.insert( output, {
+					address = address,
+					name = name,
+					ping = ping,
+					map = map,
+					gamemode = gm,
+					favorite = serverlist.IsServerFavorite( address ),
+					players = players,
+					botplayers = botplayers,
+					maxplayers = maxplayers,
+				} )
+			end
+
+			//if ( #output == #addresses ) then
+				local json = util.TableToJSON( output )
+				pnlMainMenu:Call( "ReceiveFoundServers(" .. json .. ")" )
+			//end
+
+		end )
+
+	end
+
 end
 
 --
@@ -296,12 +569,85 @@ end
 
 function UpdateSubscribedAddons()
 
+	-- Addon unsubbed before main menu initialized
+	if ( !IsValid( pnlMainMenu ) ) then return end
+
 	local subscriptions = engine.GetAddons()
 	local json = util.TableToJSON( subscriptions )
-
 	pnlMainMenu:Call( "subscriptions.Update( " .. json .. " )" )
 
+	local UGCsubs = engine.GetUserContent()
+	local jsonUGC = util.TableToJSON( UGCsubs )
+	pnlMainMenu:Call( "subscriptions.UpdateUGC( " .. jsonUGC .. " )" )
+
 end
+
+function UpdateAddonDisabledState()
+	local noaddons, noworkshop = GetAddonStatus()
+	pnlMainMenu:Call( "UpdateAddonDisabledState( " .. tostring( noaddons ) .. ", " .. tostring( noworkshop ) .. " )" )
+end
+
+function MenuGetAddonData( wsid )
+	steamworks.FileInfo( wsid, function( data )
+		local json = util.TableToJSON( data ) or ""
+		pnlMainMenu:Call( "ReceivedChildAddonInfo( " .. json .. " )" )
+	end )
+end
+
+local presetCache = {}
+local function EnsurePresetsLoaded()
+	if ( table.IsEmpty( presetCache ) ) then
+		presetCache = util.JSONToTable( LoadAddonPresets() or "", true, true ) or {}
+	end
+end
+function CreateNewAddonPreset( json )
+	EnsurePresetsLoaded()
+
+	local data = util.JSONToTable( json )
+	presetCache[ data.name ] = data
+
+	SaveAddonPresets( util.TableToJSON( presetCache ) )
+end
+function ImportAddonPreset( id, json )
+	EnsurePresetsLoaded()
+
+	steamworks.FileInfo( id, function( fileInfo )
+
+		if ( !fileInfo.children or #fileInfo.children < 1 ) then
+			pnlMainMenu:Call( "OnImportPresetFailed()" )
+			return
+		end
+
+		local data = util.JSONToTable( json )
+		presetCache[ data.name ] = data
+		presetCache[ data.name ].enabled = fileInfo.children
+
+		SaveAddonPresets( util.TableToJSON( presetCache ) )
+		ListAddonPresets()
+	end )
+end
+function DeleteAddonPreset( name )
+	EnsurePresetsLoaded()
+
+	presetCache[ name ] = {}
+	presetCache[ name ] = nil
+
+	SaveAddonPresets( util.TableToJSON( presetCache ) )
+
+	ListAddonPresets()
+end
+function ListAddonPresets()
+	EnsurePresetsLoaded()
+
+	pnlMainMenu:Call( "OnReceivePresetList(" .. util.TableToJSON( presetCache ) .. ")" )
+end
+
+-- Called when UGC subscription status changes
+hook.Add( "WorkshopSubscriptionsChanged", "WorkshopSubscriptionsChanged", function( msg )
+
+	UpdateSubscribedAddons()
+
+end )
 
 hook.Add( "GameContentChanged", "RefreshMainMenu", function()
 
@@ -313,10 +659,17 @@ hook.Add( "GameContentChanged", "RefreshMainMenu", function()
 	UpdateServerSettings()
 	UpdateSubscribedAddons()
 
-	-- We update the maps with a delay because another hook updates the maps on content changed
-	-- so we really only want to update this after that.
-	timer.Simple( 0.5, function() UpdateMapList() end )
+	-- Needs to have addons mounted
+	LoadLastMap()
 
+end )
+
+hook.Add( "LoadGModSaveFailed", "HandleUGCLoadFailure", function( str, wsid )
+	local button2 = nil
+	if ( wsid and wsid:len() > 0 and wsid != "0" ) then button2 = "#ugc.open_map" end
+
+	Derma_Query( str, "#ugc.load_failed", "#dialog.ok", nil, button2, function() steamworks.ViewFile( wsid ) end )
+	gui.ActivateGameUI()
 end )
 
 --
@@ -325,11 +678,18 @@ end )
 timer.Simple( 0, function()
 
 	pnlMainMenu = vgui.Create( "MainMenuPanel" )
-	pnlMainMenu:Call( "UpdateVersion( '" .. VERSIONSTR .. "', '" .. BRANCH .. "' )" )
+	pnlMainMenu:Call( "UpdateVersion( '" .. VERSIONSTR:JavascriptSafe() .. "', '" .. NETVERSIONSTR:JavascriptSafe() .. "', '" .. BRANCH:JavascriptSafe() .. "' )" )
 
-	local language = GetConVarString( "gmod_language" )
-	LanguageChanged( language )
+	local lang = GetConVarString( "gmod_language" )
+	LanguageChanged( lang )
 
 	hook.Run( "GameContentChanged" )
 
+	if ( !file.Exists( "html/menu.html", "MOD" ) ) then
+		OnMenuFailedToLoad()
+	end
+
+	timer.Simple( 5, function()
+		if ( !pnlMainMenu.menuLoaded ) then OnMenuFailedToLoad() end
+	end )
 end )

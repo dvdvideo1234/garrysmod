@@ -1,18 +1,17 @@
 include("shared.lua")
 
 -- Define GM12 fonts for compatibility
-surface.CreateFont("DefaultBold", {font = "Tahoma",
+surface.CreateFont("DefaultBold", {font = GAMEMODE_DEFAULT_UI_FONT,
                                    size = 13,
                                    weight = 1000})
-surface.CreateFont("TabLarge",    {font = "Tahoma",
+surface.CreateFont("TabLarge",    {font = GAMEMODE_DEFAULT_UI_FONT,
                                    size = 13,
                                    weight = 700,
                                    shadow = true, antialias = false})
-surface.CreateFont("Trebuchet22", {font = "Trebuchet MS",
+surface.CreateFont("Trebuchet22", {font = GAMEMODE_DEFAULT_UI_FONT,
                                    size = 22,
                                    weight = 900})
 
-include("scoring_shd.lua")
 include("corpse_shd.lua")
 include("player_ext_shd.lua")
 include("weaponry_shd.lua")
@@ -87,7 +86,9 @@ function GM:HUDClear()
 end
 
 KARMA = {}
-function KARMA.IsEnabled() return GetGlobalBool("ttt_karma", false) end
+
+local ttt_karma = CreateConVar("ttt_karma", "1", FCVAR_REPLICATED)
+function KARMA.IsEnabled() return ttt_karma:GetBool() end
 
 function GetRoundState() return GAMEMODE.round_state end
 
@@ -98,7 +99,7 @@ local function RoundStateChange(o, n)
       GAMEMODE:CleanUpMap()
 
       -- show warning to spec mode players
-      if GetConVar("ttt_spectator_mode"):GetBool() and IsValid(LocalPlayer())then
+      if GetConVar("ttt_spectator_mode"):GetBool() and IsValid(LocalPlayer()) then
          LANG.Msg("spec_mode_warning")
       end
 
@@ -111,7 +112,7 @@ local function RoundStateChange(o, n)
       CLSCORE:ClearPanel()
 
       -- people may have died and been searched during prep
-      for _, p in pairs(player.GetAll()) do
+      for _, p in player.Iterator() do
          p.search_result = nil
       end
 
@@ -136,7 +137,7 @@ local function RoundStateChange(o, n)
    end
 
    -- whatever round state we get, clear out the voice flags
-   for k,v in pairs(player.GetAll()) do
+   for k,v in player.Iterator() do
       v.traitor_gvoice = false
    end
 end
@@ -149,7 +150,7 @@ CreateConVar("ttt_cl_soundcues", "0", FCVAR_ARCHIVE)
 local cues = {
    Sound("ttt/thump01e.mp3"),
    Sound("ttt/thump02e.mp3")
-};
+}
 local function PlaySoundCue()
    if GetConVar("ttt_cl_soundcues"):GetBool() then
       surface.PlaySound(table.Random(cues))
@@ -228,7 +229,7 @@ function GM:ClearClientState()
 
    VOICE.InitBattery()
 
-   for _, p in pairs(player.GetAll()) do
+   for _, p in player.Iterator() do
       if IsValid(p) then
          p.sb_tag = nil
          p:SetRole(ROLE_INNOCENT)
@@ -248,7 +249,7 @@ net.Receive("TTT_ClearClientState", GM.ClearClientState)
 function GM:CleanUpMap()
    -- Ragdolls sometimes stay around on clients. Deleting them can create issues
    -- so all we can do is try to hide them.
-   for _, ent in pairs(ents.FindByClass("prop_ragdoll")) do
+   for _, ent in ipairs(ents.FindByClass("prop_ragdoll")) do
       if IsValid(ent) and CORPSE.GetPlayerNick(ent, "") != "" then
          ent:SetNoDraw(true)
          ent:SetSolid(SOLID_NONE)
@@ -331,6 +332,7 @@ end
 
 
 -- Simple client-based idle checking
+local ttt_idle_limit = CreateConVar("ttt_idle_limit", "180", FCVAR_REPLICATED)
 local idle = {ang = nil, pos = nil, mx = 0, my = 0, t = 0}
 function CheckIdle()
    local client = LocalPlayer()
@@ -348,8 +350,8 @@ function CheckIdle()
    end
 
    if GetRoundState() == ROUND_ACTIVE and client:IsTerror() and client:Alive() then
-      local idle_limit = GetGlobalInt("ttt_idle_limit", 300) or 300
-      if idle_limit <= 0 then idle_limit = 300 end -- networking sucks sometimes
+      local idle_limit = ttt_idle_limit:GetInt()
+      if idle_limit <= 0 then return end
 
 
       if client:GetAngles() != idle.ang then
@@ -361,7 +363,7 @@ function CheckIdle()
          idle.mx = gui.MouseX()
          idle.my = gui.MouseY()
          idle.t = CurTime()
-      elseif client:GetPos():Distance(idle.pos) > 10 then
+      elseif client:GetPos():DistToSqr(idle.pos) > 100 then
          -- Even if players don't move their mouse, they might still walk
          idle.pos = client:GetPos()
          idle.t = CurTime()

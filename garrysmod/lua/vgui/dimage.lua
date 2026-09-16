@@ -9,7 +9,7 @@ AccessorFunc( PANEL, "m_strMatNameFailsafe",	"FailsafeMatName" )
 
 function PANEL:Init()
 
-	self:SetImageColor( Color( 255, 255, 255, 255 ) )
+	self:SetImageColor( color_white )
 	self:SetMouseInputEnabled( false )
 	self:SetKeyboardInputEnabled( false )
 
@@ -68,7 +68,7 @@ function PANEL:SetMaterial( Mat )
 
 	-- Everybody makes mistakes,
 	-- that's why they put erasers on pencils.
-	if ( type( Mat ) == "string" ) then
+	if ( isstring( Mat ) ) then
 		self:SetImage( Mat )
 		return
 	end
@@ -119,7 +119,7 @@ function PANEL:FixVertexLitMaterial()
 	local Mat = self:GetMaterial()
 	local strImage = Mat:GetName()
 
-	if ( string.find( Mat:GetShader(), "VertexLitGeneric" ) || string.find( Mat:GetShader(), "Cable" ) ) then
+	if ( string.find( Mat:GetShader(), "VertexLitGeneric" ) or string.find( Mat:GetShader(), "Cable" ) ) then
 
 		local t = Mat:GetString( "$basetexture" )
 
@@ -140,19 +140,21 @@ function PANEL:FixVertexLitMaterial()
 
 end
 
-function PANEL:SizeToContents( strImage )
+function PANEL:SizeToContents()
 
 	self:SetSize( self.ActualWidth, self.ActualHeight )
 
 end
 
-function PANEL:Paint()
+function PANEL:Paint( w, h )
 
-	self:PaintAt( 0, 0, self:GetWide(), self:GetTall() )
+	-- HACK: Gotta keep these "or"s for legacy addon code
+	self:PaintAt( 0, 0, w or self:GetWide(), h or self:GetTall() )
 
 end
 
 function PANEL:PaintAt( x, y, dw, dh )
+
 	dw, dh = dw or self:GetWide(), dh or self:GetTall()
 	self:LoadMaterial()
 
@@ -208,11 +210,10 @@ function PANEL:PaintAt( x, y, dw, dh )
 
 		surface.DrawTexturedRect( OffX + x, OffY + y, w, h )
 
-		return true
-
+	else
+		surface.DrawTexturedRect( x, y, dw, dh )
 	end
 
-	surface.DrawTexturedRect( x, y, dw, dh )
 	return true
 
 end
@@ -220,7 +221,7 @@ end
 function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
 
 	local ctrl = vgui.Create( ClassName )
-	ctrl:SetImage( "brick/brick_model" )
+	ctrl:SetImage( "gui/tool.png" )
 	ctrl:SetSize( 200, 200 )
 
 	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )

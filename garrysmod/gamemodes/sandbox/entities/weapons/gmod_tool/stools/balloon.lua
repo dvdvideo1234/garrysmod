@@ -42,12 +42,11 @@ function TOOL:LeftClick( trace, attach )
 	local force = math.Clamp( self:GetClientNumber( "force", 500 ), -1E34, 1E34 )
 	local length = self:GetClientNumber( "ropelength", 64 )
 
-	local modeltable = list.Get( "BalloonModels" )[ model ]
-
 	--
 	-- Model is a table index on BalloonModels
 	-- If the model isn't defined then it can't be spawned.
 	--
+	local modeltable = list.GetEntry( "BalloonModels", model )
 	if ( !modeltable ) then return false end
 
 	--
@@ -75,9 +74,10 @@ function TOOL:LeftClick( trace, attach )
 	--
 	-- Hit the balloon limit, bail
 	--
-	if ( !self:GetSWEP():CheckLimit( "balloons" ) ) then return false end
+	if ( !self:GetWeapon():CheckLimit( "balloons" ) ) then return false end
 
 	local balloon = MakeBalloon( ply, r, g, b, force, { Pos = trace.HitPos, Model = modeltable.model, Skin = modeltable.skin } )
+	if ( !IsValid( balloon ) ) then return false end
 
 	local CurPos = balloon:GetPos()
 	local NearestPoint = balloon:NearestPoint( CurPos - ( trace.HitNormal * 512 ) )
@@ -87,15 +87,13 @@ function TOOL:LeftClick( trace, attach )
 
 	balloon:SetPos( Pos )
 
-	undo.Create( "Balloon" )
+	undo.Create( "gmod_balloon" )
 		undo.AddEntity( balloon )
 
 		if ( attach ) then
 
 			-- The real model should have an attachment!
-			local attachpoint = Pos + Vector( 0, 0, 0 )
-
-			local LPos1 = balloon:WorldToLocal( attachpoint )
+			local LPos1 = balloon:WorldToLocal( Pos )
 			local LPos2 = trace.Entity:WorldToLocal( trace.HitPos )
 
 			if ( IsValid( trace.Entity ) ) then
@@ -105,12 +103,16 @@ function TOOL:LeftClick( trace, attach )
 
 			end
 
-			local constraint, rope = constraint.Rope( balloon, trace.Entity, 0, trace.PhysicsBone, LPos1, LPos2, 0, length, 0, 0.5, material, nil )
+			local constr, rope = constraint.Rope( balloon, trace.Entity, 0, trace.PhysicsBone, LPos1, LPos2, 0, length, 0, 0.5, material )
+			if ( IsValid( constr ) ) then
+				undo.AddEntity( constr )
+				ply:AddCleanup( "balloons", constr )
+			end
 
-			undo.AddEntity( rope )
-			undo.AddEntity( constraint )
-			ply:AddCleanup( "balloons", rope )
-			ply:AddCleanup( "balloons", constraint )
+			if ( IsValid( rope ) ) then
+				undo.AddEntity( rope )
+				ply:AddCleanup( "balloons", rope )
+			end
 
 		end
 
@@ -129,34 +131,39 @@ end
 
 if ( SERVER ) then
 
-	function MakeBalloon( pl, r, g, b, force, Data )
+	function MakeBalloon( ply, r, g, b, force, Data )
 
-		if ( IsValid( pl ) && !pl:CheckLimit( "balloons" ) ) then return end
+		if ( IsValid( ply ) && !ply:CheckLimit( "balloons" ) ) then return NULL end
+
+		if ( !isnumber( r ) ) then r = 255 end
+		if ( !isnumber( g ) ) then g = 255 end
+		if ( !isnumber( b ) ) then b = 255 end
+		if ( !isnumber( force ) ) then force = 0 end
 
 		local balloon = ents.Create( "gmod_balloon" )
-		if ( !IsValid( balloon ) ) then return end
+		if ( !IsValid( balloon ) ) then return NULL end
 
 		duplicator.DoGeneric( balloon, Data )
 
 		balloon:Spawn()
 
-		duplicator.DoGenericPhysics( balloon, pl, Data )
+		DoPropSpawnedEffect( balloon )
 
-		force = math.Clamp( force, -1E34, 1E34 )
+		duplicator.DoGenericPhysics( balloon, ply, Data )
 
 		balloon:SetColor( Color( r, g, b, 255 ) )
 		balloon:SetForce( force )
-		balloon:SetPlayer( pl )
+		balloon:SetPlayer( ply )
 
-		balloon.Player = pl
+		balloon.Player = ply
 		balloon.r = r
 		balloon.g = g
 		balloon.b = b
 		balloon.force = force
 
-		if ( IsValid( pl ) ) then
-			pl:AddCount( "balloons", balloon )
-			pl:AddCleanup( "balloons", balloon )
+		if ( IsValid( ply ) ) then
+			ply:AddCount( "balloons", balloon )
+			ply:AddCleanup( "balloons", balloon )
 		end
 
 		return balloon
@@ -183,11 +190,11 @@ function TOOL:UpdateGhostBalloon( ent, ply )
 
 	local pos = trace.HitPos + Offset
 
-	local modeltable = list.Get( "BalloonModels" )[ self:GetClientInfo( "model" ) ]
-	if ( modeltable.skin ) then ent:SetSkin( modeltable.skin ) end
+	local modeltable = list.GetEntry( "BalloonModels", self:GetClientInfo( "model" ) )
+	if ( modeltable && modeltable.skin ) then ent:SetSkin( modeltable.skin ) end
 
 	ent:SetPos( pos )
-	ent:SetAngles( Angle( 0, 0, 0 ) )
+	ent:SetAngles( angle_zero )
 
 	ent:SetNoDraw( false )
 
@@ -197,10 +204,10 @@ function TOOL:Think()
 
 	if ( !IsValid( self.GhostEntity ) || self.GhostEntity.model != self:GetClientInfo( "model" ) ) then
 
-		local modeltable = list.Get( "BalloonModels" )[ self:GetClientInfo( "model" ) ]
+		local modeltable = list.GetEntry( "BalloonModels", self:GetClientInfo( "model" ) )
 		if ( !modeltable ) then self:ReleaseGhostEntity() return end
 
-		self:MakeGhostEntity( modeltable.model, Vector( 0, 0, 0 ), Angle( 0, 0, 0 ) )
+		self:MakeGhostEntity( modeltable.model, vector_origin, angle_zero )
 		if ( IsValid( self.GhostEntity ) ) then self.GhostEntity.model = self:GetClientInfo( "model" ) end
 
 	end
@@ -213,15 +220,17 @@ local ConVarsDefault = TOOL:BuildConVarList()
 
 function TOOL.BuildCPanel( CPanel )
 
-	CPanel:AddControl( "Header", { Description = "#tool.balloon.help" } )
+	CPanel:Help( "#tool.balloon.help" )
+	CPanel:ToolPresets( "balloon", ConVarsDefault )
 
-	CPanel:AddControl( "ComboBox", { MenuButton = 1, Folder = "balloon", Options = { [ "#preset.default" ] = ConVarsDefault }, CVars = table.GetKeys( ConVarsDefault ) } )
+	CPanel:NumSlider( "#tool.balloon.ropelength", "balloon_ropelength", 5, 1000 )
 
-	CPanel:AddControl( "Slider", { Label = "#tool.balloon.ropelength", Type = "Float", Command = "balloon_ropelength", Min = 5, Max = 1000 } )
-	CPanel:AddControl( "Slider", { Label = "#tool.balloon.force", Type = "Float", Command = "balloon_force", Min = -1000, Max = 2000, Help = true } )
-	CPanel:AddControl( "Color", { Label = "#tool.balloon.color", Red = "balloon_r", Green = "balloon_g", Blue = "balloon_b" } )
+	CPanel:NumSlider( "#tool.balloon.force", "balloon_force", -1000, 2000 )
+	CPanel:ControlHelp( "#tool.balloon.force.help" )
 
-	CPanel:AddControl( "PropSelect", { Label = "#tool.balloon.model", ConVar = "balloon_model", Height = 0, ModelsTable = list.Get( "BalloonModels" ) } )
+	CPanel:ColorPicker( "#tool.balloon.color", "balloon_r", "balloon_g", "balloon_b" )
+
+	CPanel:PropSelect( "#tool.balloon.model", "balloon_model", list.Get( "BalloonModels" ), 0 )
 
 end
 

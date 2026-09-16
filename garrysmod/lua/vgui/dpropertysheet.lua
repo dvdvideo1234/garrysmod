@@ -52,7 +52,7 @@ function PANEL:PerformLayout()
 	if ( !self:IsActive() ) then
 		self.Image:SetImageColor( Color( 255, 255, 255, 155 ) )
 	else
-		self.Image:SetImageColor( Color( 255, 255, 255, 255 ) )
+		self.Image:SetImageColor( color_white )
 	end
 
 end
@@ -61,7 +61,7 @@ function PANEL:UpdateColours( skin )
 
 	if ( self:IsActive() ) then
 
-		if ( self:GetDisabled() ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Disabled ) end
+		if ( !self:IsEnabled() ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Disabled ) end
 		if ( self:IsDown() ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Down ) end
 		if ( self.Hovered ) then return self:SetTextStyleColor( skin.Colours.Tab.Active.Hover ) end
 
@@ -69,7 +69,7 @@ function PANEL:UpdateColours( skin )
 
 	end
 
-	if ( self:GetDisabled() ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Disabled ) end
+	if ( !self:IsEnabled() ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Disabled ) end
 	if ( self:IsDown() ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Down ) end
 	if ( self.Hovered ) then return self:SetTextStyleColor( skin.Colours.Tab.Inactive.Hover ) end
 
@@ -117,6 +117,24 @@ end
 function PANEL:GenerateExample()
 
 	-- Do nothing!
+
+end
+
+function PANEL:DoRightClick()
+
+	if ( !IsValid( self:GetPropertySheet() ) ) then return end
+
+	local tabs = DermaMenu()
+	for k, v in pairs( self:GetPropertySheet().Items ) do
+		if ( !v || !IsValid( v.Tab ) || !v.Tab:IsVisible() ) then continue end
+		local option = tabs:AddOption( v.Tab:GetText(), function()
+			if ( !v || !IsValid( v.Tab ) || !IsValid( self:GetPropertySheet() ) || !IsValid( self:GetPropertySheet().tabScroller ) ) then return end
+			v.Tab:DoClick()
+			self:GetPropertySheet().tabScroller:ScrollToChild( v.Tab )
+		end )
+		if ( IsValid( v.Tab.Image ) ) then option:SetIcon( v.Tab.Image:GetImage() ) end
+	end
+	tabs:Open()
 
 end
 
@@ -227,6 +245,12 @@ function PANEL:Think()
 
 end
 
+function PANEL:GetItems()
+
+	return self.Items
+
+end
+
 function PANEL:CrossFade( anim, delta, data )
 
 	if ( !data || !IsValid( data.OldTab ) || !IsValid( data.NewTab ) ) then return end
@@ -246,7 +270,7 @@ function PANEL:CrossFade( anim, delta, data )
 		if ( IsValid( new ) ) then
 			new:SetAlpha( 255 )
 			new:SetZPos( 0 )
-			new:SetVisible( true ) // In case new == old
+			new:SetVisible( true ) -- In case new == old
 		end
 
 		return
@@ -369,10 +393,12 @@ function PANEL:SetupCloseButton( func )
 	self.CloseButton = self.tabScroller:Add( "DImageButton" )
 	self.CloseButton:SetImage( "icon16/circlecross.png" )
 	self.CloseButton:SetColor( Color( 10, 10, 10, 200 ) )
-	self.CloseButton:DockMargin( 0, 0, 0, 8 )
-	self.CloseButton:SetWide( 16 )
+	self.CloseButton:DockMargin( 1, 1, 1, 9 )
+	self.CloseButton:SetWide( 18 )
 	self.CloseButton:Dock( RIGHT )
-	self.CloseButton.DoClick = function() func() end
+	self.CloseButton.DoClick = function()
+		if ( func ) then func() end
+	end
 
 end
 
@@ -397,7 +423,9 @@ function PANEL:CloseTab( tab, bRemovePanelToo )
 	self.tabScroller:InvalidateLayout( true )
 
 	if ( tab == self:GetActiveTab() ) then
-		self.m_pActiveTab = self.Items[ #self.Items ].Tab
+		local targetTab = self.Items[ #self.Items ].Tab
+		self:OnActiveTabChanged( self.m_pActiveTab, targetTab )
+		self.m_pActiveTab = targetTab
 	end
 
 	local pnl = tab:GetPanel()
@@ -411,6 +439,24 @@ function PANEL:CloseTab( tab, bRemovePanelToo )
 	self:InvalidateLayout( true )
 
 	return pnl
+
+end
+
+function PANEL:Clear()
+
+	-- Let whatever code know that the actie tab is gone
+	self:OnActiveTabChanged( self.m_pActiveTab, nil )
+	self.m_pActiveTab = nil
+
+	-- Remove everything from the scroller
+	self.tabScroller:Clear()
+
+	-- Remove all tabs and their panels
+	for k, tabInfo in ipairs( self.Items ) do
+		tabInfo.Tab:Remove()
+		if ( IsValid( tabInfo.Panel ) ) then tabInfo.Panel:Remove() end
+	end
+	self.Items = {}
 
 end
 

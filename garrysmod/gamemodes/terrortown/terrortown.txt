@@ -2,6 +2,7 @@
 {
 	"base"		"base"
 	"title"		"Trouble in Terrorist Town"
+	"category"	"pvp"
 	"maps"		"^ttt_"
 	"menusystem"	"1"
 
@@ -10,218 +11,225 @@
 		1
 		{
 			"name"		"ttt_debug_preventwin"
-			"text"		"Prevent Winning"
+			"text"		"prevent_winning"
 			"type"		"CheckBox"
 			"default"	"0"
 		}
-		
+
 		2
 		{
 			"name"		"ttt_haste"
-			"text"		"Haste Mode"
+			"text"		"haste_mode"
 			"type"		"CheckBox"
 			"default"	"1"
 		}
-		
+
 		5
 		{
 			"name"		"ttt_time_limit_minutes"
-			"text"		"Map Time Limit"
+			"text"		"map_time_limit"
 			"type"		"Numeric"
 			"default"	"75"
 		}
-		
+
 		6
 		{
 			"name"		"ttt_firstpreptime"
-			"text"		"Initial Waiting Time"
+			"text"		"initial_waiting_time"
 			"type"		"Numeric"
 			"default"	"60"
 		}
-		
+
 		7
 		{
 			"name"		"ttt_preptime_seconds"
-			"text"		"Preparing Time"
+			"text"		"preparing_time"
 			"type"		"Numeric"
 			"default"	"30"
 		}
-		
+
 		8
 		{
 			"name"		"ttt_posttime_seconds"
-			"text"		"Postround Time"
+			"text"		"postround_time"
 			"type"		"Numeric"
 			"default"	"30"
 		}
-		
+
 		9
 		{
 			"name"		"ttt_round_limit"
-			"text"		"Round Limit"
+			"text"		"round_limit"
 			"type"		"Numeric"
 			"default"	"6"
 		}
-		
+
 		10
 		{
 			"name"		"ttt_roundtime_minutes"
-			"text"		"Round Time"
+			"text"		"round_time"
 			"type"		"Numeric"
 			"default"	"10"
 		}
-		
+
 		11
 		{
 			"name"		"ttt_haste_starting_minutes"
-			"text"		"Haste Round Time"
+			"text"		"haste_round_time"
 			"type"		"Numeric"
 			"default"	"5"
 		}
-		
+
 		12
 		{
 			"name"		"ttt_haste_minutes_per_death"
-			"text"		"Haste Kill Time Bonus"
+			"text"		"haste_kill_time_bonus"
 			"type"		"Numeric"
-			"default"	".5"
+			"default"	"0.5"
 		}
-		
+
 		13
 		{
 			"name"		"ttt_postround_dm"
-			"text"		"Postround Deathmatch"
+			"text"		"postround_deathmatch"
 			"type"		"CheckBox"
 			"default"	"0"
 		}
-		
+
 		14
 		{
 			"name"		"ttt_traitor_max"
-			"text"		"Max Traitors"
+			"text"		"max_traitors"
 			"type"		"Numeric"
 			"default"	"32"
 		}
-		
+
 		15
 		{
 			"name"		"ttt_traitor_pct"
-			"text"		"Traitor Ratio"
+			"text"		"traitor_ratio"
 			"type"		"Numeric"
 			"default"	"0.25"
 		}
-		
+
 		16
 		{
 			"name"		"ttt_credits_starting"
-			"text"		"Traitor Credits"
+			"text"		"traitor_credits"
 			"type"		"Numeric"
 			"default"	"2"
 		}
-		
+
 		17
 		{
 			"name"		"ttt_detective_max"
-			"text"		"Max Detectives"
+			"text"		"max_detectives"
 			"type"		"Numeric"
 			"default"	"32"
 		}
-		
+
 		18
 		{
 			"name"		"ttt_detective_pct"
-			"text"		"Detective Ratio"
+			"text"		"detective_ratio"
 			"type"		"Numeric"
-			"default"	"0.125"
+			"default"	"0.13"
 		}
-		
+
 		19
 		{
 			"name"		"ttt_det_credits_starting"
-			"text"		"Detective Credits"
+			"text"		"detective_credits"
 			"type"		"Numeric"
 			"default"	"1"
 		}
-		
+
 		20
 		{
 			"name"		"ttt_detective_min_players"
-			"text"		"Min Detective Playercount"
+			"text"		"detective_min_players"
 			"type"		"Numeric"
 			"default"	"8"
 		}
-		
+
 		21
 		{
 			"name"		"ttt_detective_karma_min"
-			"text"		"Min Detective Karma"
+			"text"		"detective_min_karma"
 			"type"		"Numeric"
 			"default"	"600"
 		}
-		
+
 		22
 		{
 			"name"		"ttt_detective_hats"
-			"text"		"Detective Hats"
+			"text"		"detective_hats"
 			"type"		"CheckBox"
-			"default"	"0"
+			"default"	"1"
 		}
-		
+
 		23
 		{
 			"name"		"ttt_allow_discomb_jump"
-			"text"		"Discombob Jumping"
+			"text"		"discombob_jumping"
 			"type"		"CheckBox"
 			"default"	"0"
 		}
-		
+
 		24
 		{
 			"name"		"ttt_no_nade_throw_during_prep"
-			"text"		"Preround Grenade Throwing"
+			"text"		"no_preround_grenade_throwing"
 			"type"		"CheckBox"
-			"default"	"0"
+			"default"	"1"
 		}
-		
+
 		25
 		{
 			"name"		"ttt_teleport_telefrags"
-			"text"		"Teleporter Fragging"
+			"text"		"teleporter_fragging"
 			"type"		"CheckBox"
-			"default"	"0"
+			"default"	"1"
 		}
-		
+
 		26
 		{
 			"name"		"ttt_ragdoll_pinning"
-			"text"		"Ragdoll Pinning"
+			"text"		"ragdoll_pinning"
 			"type"		"CheckBox"
 			"default"	"1"
 		}
-		
+
 		27
 		{
 			"name"		"ttt_ragdoll_pinning_innocents"
-			"text"		"Innocent Pinning"
+			"text"		"innocent_pinning"
 			"type"		"CheckBox"
 			"default"	"0"
 		}
-		
+
 		30
 		{
 			"name"		"ttt_namechange_kick"
-			"text"		"Kick for Changing Name"
+			"text"		"kick_for_changing_name"
 			"type"		"CheckBox"
 			"default"	"1"
 		}
-		
+
 		31
 		{
 			"name"		"ttt_namechange_bantime"
-			"text"		"Name Change Ban Time"
+			"text"		"name_change_ban_time"
 			"type"		"Numeric"
 			"default"	"10"
 		}
-		
+
+		32
+		{
+			"name"		"ttt_karma"
+			"text"		"karma_system"
+			"type"		"CheckBox"
+			"default"	"1"
+		}
 	}
 }

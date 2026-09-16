@@ -76,7 +76,7 @@ function PANEL:OnKeyCodeTyped( code )
 		end
 
 		self:FocusNext()
-		self:OnEnter()
+		self:OnEnter( self:GetText() )
 		self.HistoryPos = 0
 
 	end
@@ -147,7 +147,7 @@ function PANEL:UpdateFromHistory()
 	if ( !text ) then text = "" end
 
 	self:SetText( text )
-	self:SetCaretPos( text:len() )
+	self:SetCaretPos( utf8.len( text ) )
 
 	self:OnTextChanged()
 
@@ -177,7 +177,7 @@ function PANEL:UpdateFromMenu()
 	local txt = item:GetText()
 
 	self:SetText( txt )
-	self:SetCaretPos( txt:len() )
+	self:SetCaretPos( utf8.len( txt ) )
 
 	self:OnTextChanged( true )
 
@@ -215,11 +215,19 @@ function PANEL:OpenAutoComplete( tab )
 	if ( !tab ) then return end
 	if ( #tab == 0 ) then return end
 
-	self.Menu = DermaMenu()
+	-- If we have a modal parent at some level, we gotta parent to
+	-- that or our menu items are not gonna be selectable
+	local parent = self
+	while ( IsValid( parent ) && !parent:IsModal() ) do
+		parent = parent:GetParent()
+	end
+	if ( !IsValid( parent ) ) then parent = self end
+
+	self.Menu = DermaMenu( false, parent )
 
 	for k, v in pairs( tab ) do
 
-		self.Menu:AddOption( v, function() self:SetText( v ) self:SetCaretPos( v:len() ) self:RequestFocus() end )
+		self.Menu:AddOption( v, function() self:SetText( v ) self:SetCaretPos( utf8.len( v ) ) self:RequestFocus() end )
 
 	end
 
@@ -237,7 +245,15 @@ function PANEL:Think()
 
 end
 
-function PANEL:OnEnter()
+function PANEL:OnRemove()
+
+	if ( IsValid( self.Menu ) ) then
+		self.Menu:Remove()
+	end
+
+end
+
+function PANEL:OnEnter( val )
 
 	-- For override
 	self:UpdateConvarValue()
@@ -302,11 +318,12 @@ function PANEL:CheckNumeric( strValue )
 
 end
 
+-- Backwards compatibility. Do not use.
 function PANEL:SetDisabled( bDisabled )
 	self:SetEnabled( !bDisabled )
 end
 
-function PANEL:GetDisabled( bDisabled )
+function PANEL:GetDisabled()
 	return !self:IsEnabled()
 end
 
@@ -349,7 +366,9 @@ end
 
 function PANEL:OnMousePressed( mcode )
 
-	self:OnGetFocus()
+	if ( mcode == MOUSE_LEFT ) then
+		self:OnGetFocus()
+	end
 
 end
 
@@ -368,7 +387,10 @@ end
 
 function PANEL:GetInt()
 
-	return math.floor( tonumber( self:GetText() ) + 0.5 )
+	local num = tonumber( self:GetText() )
+	if ( !num ) then return nil end
+
+	return math.Round( num )
 
 end
 
@@ -383,7 +405,7 @@ function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
 	local ctrl = vgui.Create( ClassName )
 	ctrl:SetText( "Edit Me!" )
 	ctrl:SetWide( 150 )
-	ctrl.OnEnter = function( self ) Derma_Message( "You Typed: " .. self:GetValue() ) end
+	ctrl.OnEnter = function( slf ) Derma_Message( "You Typed: " .. slf:GetValue() ) end
 
 	PropertySheet:AddSheet( ClassName, ctrl, nil, true, true )
 
@@ -396,12 +418,22 @@ derma.DefineControl( "DTextEntry", "A simple TextEntry control", PANEL, "TextEnt
 -----------------------------------------------------------]]
 function TextEntryLoseFocus( panel, mcode )
 
-	local pnl = vgui.GetKeyboardFocus()
-	if ( !pnl ) then return end
-	if ( pnl == panel ) then return end
-	if ( !pnl.m_bLoseFocusOnClickAway ) then return end
+	local textArea = vgui.GetKeyboardFocus()
+	if ( !textArea ) then return end
+	if ( textArea == panel ) then return end
+	if ( textArea:IsOurChild( panel ) ) then return end -- Do not lose focus when clicking panels parented to the text entry (Autocomplete DMenu)
+	if ( !textArea.m_bLoseFocusOnClickAway ) then return end
 
-	pnl:FocusNext()
+	-- We gotta find the EdtiablePanel parent and call KillFocus on it
+	-- We do it from the panel clicked, not the KB focus, which is necessary for DTextEntry autocomplete to not break
+	local prnt = panel
+	while ( IsValid( prnt ) ) do
+		if ( prnt:GetClassName() == "EditablePanel" || prnt:GetClassName() == "LuaEditablePanel" ) then
+			prnt:KillFocus()
+			return
+		end
+		prnt = prnt:GetParent()
+	end
 
 end
 hook.Add( "VGUIMousePressed", "TextEntryLoseFocus", TextEntryLoseFocus )

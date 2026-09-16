@@ -18,7 +18,7 @@ function PANEL:Init()
 
 	self.pnlCanvas = vgui.Create( "DPanel", self )
 	self.pnlCanvas:SetPaintBackground( false )
-	self.pnlCanvas.OnMousePressed = function( self, code ) self:GetParent():OnMousePressed( code ) end
+	self.pnlCanvas.OnMousePressed = function( slf, code ) slf:GetParent():OnMousePressed( code ) end
 	self.pnlCanvas.OnChildRemoved = function() self:OnChildRemoved() end
 	self.pnlCanvas:SetMouseInputEnabled( true )
 	self.pnlCanvas.InvalidateLayout = function() self:InvalidateLayout() end
@@ -234,6 +234,7 @@ function PANEL:Rebuild()
 	if ( self.Horizontal ) then
 
 		local x, y = self.Padding, self.Padding
+		local prevH = 0
 		for k, panel in pairs( self.Items ) do
 
 			if ( panel:IsVisible() ) then
@@ -246,7 +247,7 @@ function PANEL:Rebuild()
 				if ( x > self.Padding && ( x + w > self:GetWide() || OwnLine ) ) then
 
 					x = self.Padding
-					y = y + h + self.Spacing
+					y = y + prevH + self.Spacing
 
 				end
 
@@ -258,6 +259,7 @@ function PANEL:Rebuild()
 
 				x = x + w + self.Spacing
 				Offset = y + h + self.Spacing
+				prevH = h
 
 				if ( OwnLine ) then
 

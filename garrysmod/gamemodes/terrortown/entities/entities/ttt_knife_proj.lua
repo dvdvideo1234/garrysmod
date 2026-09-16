@@ -132,7 +132,7 @@ if SERVER then
      local vel = self:GetVelocity()
      if vel == vector_origin then return end
 
-     local tr = util.TraceLine({start=self:GetPos(), endpos=self:GetPos() + vel:GetNormal() * 20, filter={self, self:GetOwner()}, mask=MASK_SHOT_HULL})
+     local tr = util.TraceLine({start=self:GetPos(), endpos=self:GetPos() + vel:GetNormalized() * 20, filter={self, self:GetOwner()}, mask=MASK_SHOT_HULL})
 
      if tr.Hit and tr.HitNonWorld and IsValid(tr.Entity) then
         local other = tr.Entity
@@ -150,9 +150,11 @@ end
 -- weapon ent again. If it touches a player it sticks in it.
 if SERVER then
    function ENT:BecomeWeapon()
+      local wep = ents.Create("weapon_ttt_knife")
+      if not IsValid(wep) then print("Knife failed to become a weapon!") return NULL end
+
       self.Weaponised = true
 
-      local wep = ents.Create("weapon_ttt_knife")
       wep:SetPos(self:GetPos())
       wep:SetAngles(self:GetAngles())
       wep.IsDropped = true

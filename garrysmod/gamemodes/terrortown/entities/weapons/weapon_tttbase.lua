@@ -30,7 +30,7 @@ if CLIENT then
    --
    ---- Desc is the description in the menu. Needs manual linebreaks (via \n).
    --     desc = "Text."
-   -- };
+   -- }
 
    -- This sets the icon shown for the weapon in the DNA sampler, search window,
    -- equipment menu (if buyable), etc.
@@ -133,7 +133,18 @@ if CLIENT then
    local crosshair_size = CreateConVar("ttt_crosshair_size", "1.0", FCVAR_ARCHIVE)
    local disable_crosshair = CreateConVar("ttt_disable_crosshair", "0", FCVAR_ARCHIVE)
 
-   function SWEP:DrawHUD()
+   local enable_color_crosshair = CreateConVar("ttt_crosshair_color_enable", "0", FCVAR_ARCHIVE)
+   local crosshair_color_r = CreateConVar("ttt_crosshair_color_r", "255", FCVAR_ARCHIVE)
+   local crosshair_color_g = CreateConVar("ttt_crosshair_color_g", "255", FCVAR_ARCHIVE)
+   local crosshair_color_b = CreateConVar("ttt_crosshair_color_b", "255", FCVAR_ARCHIVE)
+
+   local crosshair_opacity = CreateConVar("ttt_crosshair_opacity", "1", FCVAR_ARCHIVE)
+   local crosshair_thickness = CreateConVar("ttt_crosshair_thickness", "1", FCVAR_ARCHIVE)
+   local crosshair_outlinethickness = CreateConVar("ttt_crosshair_outlinethickness", "0", FCVAR_ARCHIVE)
+
+   local mat_antialias = GetConVar("mat_antialias")
+
+   function SWEP:DrawHUD(static, gap)
       if self.HUDHelp then
          self:DrawHelp()
       end
@@ -145,17 +156,64 @@ if CLIENT then
 
       local x = math.floor(ScrW() / 2.0)
       local y = math.floor(ScrH() / 2.0)
-      local scale = math.max(0.2,  10 * self:GetPrimaryCone())
+      local scale = math.max(0.2, 10 * self:GetPrimaryCone())
 
-      local LastShootTime = self:LastShootTime()
-      scale = scale * (2 - math.Clamp( (CurTime() - LastShootTime) * 5, 0.0, 1.0 ))
+      if not static then
+         local LastShootTime = self:LastShootTime()
+         scale = scale * (2 - math.Clamp( (CurTime() - LastShootTime) * 5, 0.0, 1.0 ))
+      end
 
-      local alpha = sights and sights_opacity:GetFloat() or 1
+      local alpha = sights and sights_opacity:GetFloat() or crosshair_opacity:GetFloat()
       local bright = crosshair_brightness:GetFloat() or 1
 
-      -- somehow it seems this can be called before my player metatable
-      -- additions have loaded
-      if client.IsTraitor and client:IsTraitor() then
+      gap = gap or math.floor(20 * scale * (sights and 0.8 or 1))
+      local length = math.floor(gap + (25 * crosshair_size:GetFloat()) * scale)
+
+      local thickness = math.max(1, crosshair_thickness:GetInt())
+      local rect = thickness > 1
+
+      -- lines are drawn with antialiasing when MSAA is enabled which makes them 1 pixel longer
+      local antialias = not rect and mat_antialias:GetInt() > 1
+
+      local offset, odd_offset = 0, 0
+      if rect then
+         offset = math.floor(thickness / 2)
+
+         -- ensures that high thickness levels don't cause the crosshair to overlap itself
+         gap = gap + offset
+         length = length + offset
+
+         -- prevents the distance between crosshair prongs from becoming uneven with odd thickness levels
+         odd_offset = thickness % 2
+      elseif not antialias then
+         odd_offset = 1
+      end
+
+      local outline = crosshair_outlinethickness:GetInt()
+      if outline > 0 then
+         surface.SetDrawColor(0, 0, 0, 255 * alpha)
+
+         local out_thick = thickness + outline * 2
+         local out_length = antialias and length + 1 or length
+         out_length = out_length - gap + outline * 2
+
+         local out_offset = offset + outline
+
+         local out_topleft = length + outline
+         local out_bottomright = gap - outline + odd_offset
+
+         surface.DrawRect( x - out_topleft, y - out_offset, out_length, out_thick )
+         surface.DrawRect( x + out_bottomright, y - out_offset, out_length, out_thick )
+         surface.DrawRect( x - out_offset, y - out_topleft, out_thick, out_length )
+         surface.DrawRect( x - out_offset, y + out_bottomright, out_thick, out_length )
+      end
+
+      if enable_color_crosshair:GetBool() then
+         surface.SetDrawColor(crosshair_color_r:GetInt() * bright,
+                              crosshair_color_g:GetInt() * bright,
+                              crosshair_color_b:GetInt() * bright,
+                              255 * alpha)
+      elseif client.IsTraitor and client:IsTraitor() then -- somehow it seems this can be called before my player metatable additions have loaded
          surface.SetDrawColor(255 * bright,
                               50 * bright,
                               50 * bright,
@@ -167,12 +225,20 @@ if CLIENT then
                               255 * alpha)
       end
 
-      local gap = math.floor(20 * scale * (sights and 0.8 or 1))
-      local length = math.floor(gap + (25 * crosshair_size:GetFloat()) * scale)
-      surface.DrawLine( x - length, y, x - gap, y )
-      surface.DrawLine( x + length, y, x + gap, y )
-      surface.DrawLine( x, y - length, x, y - gap )
-      surface.DrawLine( x, y + length, x, y + gap )
+      if rect then
+         local rect_length = length - gap
+         gap = gap + odd_offset
+
+         surface.DrawRect( x - length, y - offset, rect_length, thickness )
+         surface.DrawRect( x + gap, y - offset, rect_length, thickness )
+         surface.DrawRect( x - offset, y - length, thickness, rect_length )
+         surface.DrawRect( x - offset, y + gap, thickness, rect_length )
+      else
+         surface.DrawLine( x - length, y, x - gap, y )
+         surface.DrawLine( x + length, y, x + gap, y )
+         surface.DrawLine( x, y - length, x, y - gap )
+         surface.DrawLine( x, y + length, x, y + gap )
+      end
    end
 
    local GetPTranslation = LANG.GetParamTranslation
@@ -209,7 +275,7 @@ if CLIENT then
       primaryfire   = Key("+attack",  "LEFT MOUSE"),
       secondaryfire = Key("+attack2", "RIGHT MOUSE"),
       usekey        = Key("+use",     "USE")
-   };
+   }
 
    function SWEP:AddHUDHelp(primary_text, secondary_text, translate, extra_params)
       extra_params = extra_params or {}
@@ -219,7 +285,14 @@ if CLIENT then
          secondary = secondary_text,
          translatable = translate,
          translate_params = table.Merge(extra_params, default_key_params)
-      };
+      }
+   end
+
+   -- CallOnClient only works with lua functions
+   if game.SinglePlayer() then
+      function SWEP:SPLastShoot()
+         self:SetLastShootTime()
+      end
    end
 end
 
@@ -241,14 +314,18 @@ function SWEP:PrimaryAttack(worldsnd)
 
    self:TakePrimaryAmmo( 1 )
 
-   local owner = self.Owner
+   local owner = self:GetOwner()
    if not IsValid(owner) or owner:IsNPC() or (not owner.ViewPunch) then return end
 
    owner:ViewPunch( Angle( util.SharedRandom(self:GetClass(),-0.2,-0.1,0) * self.Primary.Recoil, util.SharedRandom(self:GetClass(),-0.1,0.1,1) * self.Primary.Recoil, 0 ) )
+
+   if game.SinglePlayer() then
+      self:CallOnClient("SPLastShoot")
+   end
 end
 
 function SWEP:DryFire(setnext)
-   if CLIENT and LocalPlayer() == self.Owner then
+   if CLIENT and LocalPlayer() == self:GetOwner() then
       self:EmitSound( "Weapon_Pistol.Empty" )
    end
 
@@ -258,7 +335,7 @@ function SWEP:DryFire(setnext)
 end
 
 function SWEP:CanPrimaryAttack()
-   if not IsValid(self.Owner) then return end
+   if not IsValid(self:GetOwner()) then return end
 
    if self:Clip1() <= 0 then
       self:DryFire(self.SetNextPrimaryFire)
@@ -268,7 +345,7 @@ function SWEP:CanPrimaryAttack()
 end
 
 function SWEP:CanSecondaryAttack()
-   if not IsValid(self.Owner) then return end
+   if not IsValid(self:GetOwner()) then return end
 
    if self:Clip2() <= 0 then
       self:DryFire(self.SetNextSecondaryFire)
@@ -290,8 +367,8 @@ function SWEP:ShootBullet( dmg, recoil, numbul, cone )
 
    self:SendWeaponAnim(self.PrimaryAnim)
 
-   self.Owner:MuzzleFlash()
-   self.Owner:SetAnimation( PLAYER_ATTACK1 )
+   self:GetOwner():MuzzleFlash()
+   self:GetOwner():SetAnimation( PLAYER_ATTACK1 )
 
    local sights = self:GetIronsights()
 
@@ -299,22 +376,24 @@ function SWEP:ShootBullet( dmg, recoil, numbul, cone )
    cone   = cone   or 0.01
 
    local bullet = {}
-   bullet.Num    = numbul
-   bullet.Src    = self.Owner:GetShootPos()
-   bullet.Dir    = self.Owner:GetAimVector()
-   bullet.Spread = Vector( cone, cone, 0 )
-   bullet.Tracer = 4
+   bullet.Num        = numbul
+   bullet.Src        = self:GetOwner():GetShootPos()
+   bullet.Dir        = self:GetOwner():GetAimVector()
+   bullet.Spread     = Vector( cone, cone, 0 )
+   bullet.Tracer     = 4
    bullet.TracerName = self.Tracer or "Tracer"
-   bullet.Force  = 10
-   bullet.Damage = dmg
+   bullet.Force      = 10
+   bullet.Damage     = dmg
+   bullet.Attacker   = self:GetOwner()
+   bullet.Inflictor  = self
    if CLIENT and sparkle:GetBool() then
       bullet.Callback = Sparklies
    end
 
-   self.Owner:FireBullets( bullet )
+   self:GetOwner():FireBullets( bullet )
 
    -- Owner can die after firebullets
-   if (not IsValid(self.Owner)) or (not self.Owner:Alive()) or self.Owner:IsNPC() then return end
+   if (not IsValid(self:GetOwner())) or self:GetOwner():IsNPC() or (not self:GetOwner():Alive()) then return end
 
    if ((game.SinglePlayer() and SERVER) or
        ((not game.SinglePlayer()) and CLIENT and IsFirstTimePredicted())) then
@@ -322,15 +401,15 @@ function SWEP:ShootBullet( dmg, recoil, numbul, cone )
       -- reduce recoil if ironsighting
       recoil = sights and (recoil * 0.6) or recoil
 
-      local eyeang = self.Owner:EyeAngles()
+      local eyeang = self:GetOwner():EyeAngles()
       eyeang.pitch = eyeang.pitch - recoil
-      self.Owner:SetEyeAngles( eyeang )
+      self:GetOwner():SetEyeAngles( eyeang )
    end
 end
 
 function SWEP:GetPrimaryCone()
    local cone = self.Primary.Cone or 0.2
-   -- 10% accuracy bonus when sighting
+   -- 15% accuracy bonus when sighting
    return self:GetIronsights() and (cone * 0.85) or cone
 end
 
@@ -358,7 +437,7 @@ function SWEP:Deploy()
 end
 
 function SWEP:Reload()
-   if ( self:Clip1() == self.Primary.ClipSize or self.Owner:GetAmmoCount( self.Primary.Ammo ) <= 0 ) then return end
+   if ( self:Clip1() == self.Primary.ClipSize or self:GetOwner():GetAmmoCount( self.Primary.Ammo ) <= 0 ) then return end
    self:DefaultReload(self.ReloadAnim)
    self:SetIronsights( false )
 end
@@ -370,17 +449,17 @@ function SWEP:OnRestore()
 end
 
 function SWEP:Ammo1()
-   return IsValid(self.Owner) and self.Owner:GetAmmoCount(self.Primary.Ammo) or false
+   return IsValid(self:GetOwner()) and self:GetOwner():GetAmmoCount(self.Primary.Ammo) or false
 end
 
 -- The OnDrop() hook is useless for this as it happens AFTER the drop. OwnerChange
 -- does not occur when a drop happens for some reason. Hence this thing.
 function SWEP:PreDrop()
-   if SERVER and IsValid(self.Owner) and self.Primary.Ammo != "none" then
+   if SERVER and IsValid(self:GetOwner()) and self.Primary.Ammo != "none" then
       local ammo = self:Ammo1()
 
       -- Do not drop ammo if we have another gun that uses this type
-      for _, w in pairs(self.Owner:GetWeapons()) do
+      for _, w in ipairs(self:GetOwner():GetWeapons()) do
          if IsValid(w) and w != self and w:GetPrimaryAmmoType() == self:GetPrimaryAmmoType() then
             ammo = 0
          end
@@ -389,7 +468,7 @@ function SWEP:PreDrop()
       self.StoredAmmo = ammo
 
       if ammo > 0 then
-         self.Owner:RemoveAmmo(ammo, self.Primary.Ammo)
+         self:GetOwner():RemoveAmmo(ammo, self.Primary.Ammo)
       end
    end
 end
@@ -445,10 +524,15 @@ function SWEP:WasBought(buyer)
 end
 
 function SWEP:SetIronsights(b)
-   self:SetIronsightsPredicted(b)
-   self:SetIronsightsTime(CurTime())
-   if CLIENT then
-      self:CalcViewModel()
+   if (b != self:GetIronsights()) then
+      self:SetIronsightsPredicted(b)
+      self:SetIronsightsTime(CurTime())
+
+      if game.SinglePlayer() then
+         self:CallOnClient("CalcViewModel")
+      elseif CLIENT then
+         self:CalcViewModel()
+      end
    end
 end
 function SWEP:GetIronsights()
@@ -458,9 +542,9 @@ end
 --- Dummy functions that will be replaced when SetupDataTables runs. These are
 --- here for when that does not happen (due to e.g. stacking base classes)
 function SWEP:GetIronsightsTime() return -1 end
-function SWEP:SetIronsightsTime() end
+function SWEP:SetIronsightsTime( time ) end
 function SWEP:GetIronsightsPredicted() return false end
-function SWEP:SetIronsightsPredicted() end
+function SWEP:SetIronsightsPredicted( bool ) end
 
 -- Set up ironsights dt bool. Weapons using their own DT vars will have to make
 -- sure they call this.
@@ -468,6 +552,27 @@ function SWEP:SetupDataTables()
    self:NetworkVar("Bool", 3, "IronsightsPredicted")
    self:NetworkVar("Float", 3, "IronsightsTime")
 end
+
+local ReloadActIndex = {
+   [ "pistol" ]      = ACT_HL2MP_GESTURE_RELOAD_PISTOL,
+   [ "smg" ]         = ACT_HL2MP_GESTURE_RELOAD_SMG1,
+   [ "grenade" ]     = ACT_HL2MP_GESTURE_RELOAD_GRENADE,
+   [ "ar2" ]         = ACT_HL2MP_GESTURE_RELOAD_AR2,
+   [ "shotgun" ]     = ACT_HL2MP_GESTURE_RELOAD_SHOTGUN,
+   [ "rpg" ]         = ACT_HL2MP_GESTURE_RELOAD_RPG,
+   [ "physgun" ]     = ACT_HL2MP_GESTURE_RELOAD_PHYSGUN,
+   [ "crossbow" ]    = ACT_HL2MP_GESTURE_RELOAD_CROSSBOW,
+   [ "melee" ]       = ACT_HL2MP_GESTURE_RELOAD_MELEE,
+   [ "slam" ]        = ACT_HL2MP_GESTURE_RELOAD_SLAM,
+   [ "fist" ]        = ACT_HL2MP_GESTURE_RELOAD_FIST,
+   [ "melee2" ]      = ACT_HL2MP_GESTURE_RELOAD_MELEE2,
+   [ "passive" ]     = ACT_HL2MP_GESTURE_RELOAD_PASSIVE,
+   [ "knife" ]       = ACT_HL2MP_GESTURE_RELOAD_KNIFE,
+   [ "duel" ]        = ACT_HL2MP_GESTURE_RELOAD_DUEL,
+   [ "camera" ]      = ACT_HL2MP_GESTURE_RELOAD_CAMERA,
+   [ "magic" ]       = ACT_HL2MP_GESTURE_RELOAD_MAGIC,
+   [ "revolver" ]    = ACT_HL2MP_GESTURE_RELOAD_REVOLVER
+}
 
 function SWEP:Initialize()
    if CLIENT and self:Clip1() == -1 then
@@ -483,11 +588,19 @@ function SWEP:Initialize()
    -- compat for gmod update
    if self.SetHoldType then
       self:SetHoldType(self.HoldType or "pistol")
+
+      if self.ReloadHoldType then
+         local act = ReloadActIndex[self.ReloadHoldType]
+         if act then
+            self.ActivityTranslate[ ACT_MP_RELOAD_STAND ] = act
+            self.ActivityTranslate[ ACT_MP_RELOAD_CROUCH ] = act
+         end
+      end
    end
 end
 
 function SWEP:CalcViewModel()
-   if (not CLIENT) or (not IsFirstTimePredicted()) then return end
+   if (not CLIENT) or (not IsFirstTimePredicted() and not game.SinglePlayer()) then return end
    self.bIron = self:GetIronsights()
    self.fIronTime = self:GetIronsightsTime()
    self.fCurrentTime = CurTime()
@@ -510,18 +623,18 @@ function SWEP:DyingShot()
       end
 
       -- Owner should still be alive here
-      if IsValid(self.Owner) then
+      if IsValid(self:GetOwner()) then
          local punch = self.Primary.Recoil or 5
 
          -- Punch view to disorient aim before firing dying shot
-         local eyeang = self.Owner:EyeAngles()
+         local eyeang = self:GetOwner():EyeAngles()
          eyeang.pitch = eyeang.pitch - math.Rand(-punch, punch)
          eyeang.yaw = eyeang.yaw - math.Rand(-punch, punch)
-         self.Owner:SetEyeAngles( eyeang )
+         self:GetOwner():SetEyeAngles( eyeang )
 
-         MsgN(self.Owner:Nick() .. " fired his DYING SHOT")
+         MsgN(self:GetOwner():Nick() .. " fired his DYING SHOT")
 
-         self.Owner.dying_wep = self
+         self:GetOwner().dying_wep = self
 
          self:PrimaryAttack(true)
 

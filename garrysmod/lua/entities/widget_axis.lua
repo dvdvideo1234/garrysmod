@@ -9,12 +9,6 @@ DEFINE_BASECLASS( "widget_arrow" )
 
 local widget_axis_arrow = { Base = "widget_arrow" }
 
-function widget_axis_arrow:Initialize()
-
-	BaseClass.Initialize( self )
-
-end
-
 function widget_axis_arrow:SetupDataTables()
 
 	BaseClass.SetupDataTables( self )
@@ -37,12 +31,6 @@ scripted_ents.Register( widget_axis_arrow, "widget_axis_arrow" )
 DEFINE_BASECLASS( "widget_disc" )
 
 local widget_axis_disc = { Base = "widget_disc" }
-
-function widget_axis_disc:Initialize()
-
-	BaseClass.Initialize( self )
-
-end
 
 function widget_axis_disc:SetupDataTables()
 
@@ -77,33 +65,48 @@ end
 function ENT:Setup( ent, boneid, rotate )
 
 	self:FollowBone( ent, boneid )
-	self:SetLocalPos( Vector( 0, 0, 0 ) )
-	self:SetLocalAngles( Angle( 0, 0, 0 ) )
+	self:SetLocalPos( vector_origin )
+	self:SetLocalAngles( angle_zero )
 
 	local EntName = "widget_axis_arrow"
 	if ( rotate ) then EntName = "widget_axis_disc" end
 
 	self.ArrowX = ents.Create( EntName )
+	if ( !IsValid( self.ArrowX ) ) then
+		return false
+	end
+
 	self.ArrowX:SetParent( self )
 	self.ArrowX:SetColor( Color( 255, 0, 0, 255 ) )
 	self.ArrowX:Spawn()
-	self.ArrowX:SetLocalPos( Vector( 0, 0, 0 ) )
+	self.ArrowX:SetLocalPos( vector_origin )
 	self.ArrowX:SetLocalAngles( Vector( 1, 0, 0 ):Angle() )
 	self.ArrowX:SetAxisIndex( 1 )
 
 	self.ArrowY = ents.Create( EntName )
+	if ( !IsValid( self.ArrowY ) ) then
+		self.ArrowX:Remove()
+		return false
+	end
+
 	self.ArrowY:SetParent( self )
 	self.ArrowY:SetColor( Color( 0, 230, 50, 255 ) )
 	self.ArrowY:Spawn()
-	self.ArrowY:SetLocalPos( Vector( 0, 0, 0 ) )
+	self.ArrowY:SetLocalPos( vector_origin )
 	self.ArrowY:SetLocalAngles( Vector( 0, 1, 0 ):Angle() )
 	self.ArrowY:SetAxisIndex( 2 )
 
 	self.ArrowZ = ents.Create( EntName )
+	if ( !IsValid( self.ArrowZ ) ) then
+		self.ArrowX:Remove()
+		self.ArrowY:Remove()
+		return false
+	end
+
 	self.ArrowZ:SetParent( self )
 	self.ArrowZ:SetColor( Color( 50, 100, 255, 255 ) )
 	self.ArrowZ:Spawn()
-	self.ArrowZ:SetLocalPos( Vector( 0, 0, 0 ) )
+	self.ArrowZ:SetLocalPos( vector_origin )
 	self.ArrowZ:SetLocalAngles( Vector( 0, 0, 1 ):Angle() )
 	self.ArrowZ:SetAxisIndex( 3 )
 
@@ -112,6 +115,8 @@ function ENT:Setup( ent, boneid, rotate )
 		if ( IsValid( self.ArrowY ) ) then self.ArrowY:SetIsScaleArrow( true ) end
 		if ( IsValid( self.ArrowZ ) ) then self.ArrowZ:SetIsScaleArrow( true ) end
 	end
+
+	return true
 
 end
 
@@ -126,8 +131,8 @@ end
 function ENT:Draw()
 end
 
+function ENT:OverlayRender()
+end
+
 function ENT:OnArrowDragged( num, dist, pl, mv )
-
-	-- MsgN( num, dist, pl, mv )
-
 end

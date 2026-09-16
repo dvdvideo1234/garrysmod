@@ -53,7 +53,7 @@ end
 
 function util.GetAlivePlayers()
    local alive = {}
-   for k, p in pairs(player.GetAll()) do
+   for k, p in player.Iterator() do
       if IsValid(p) and p:Alive() and p:IsTerror() then
          table.insert(alive, p)
       end
@@ -71,7 +71,7 @@ function util.GetNextAlivePlayer(ply)
    local choice = nil
 
    if IsValid(ply) then
-      for k,p in pairs(alive) do
+      for k,p in ipairs(alive) do
          if prev == ply then
             choice = p
          end
@@ -94,7 +94,7 @@ end
 util.Capitalize = string.Capitalize
 
 -- Color unpacking
-function clr(color) return color.r, color.g, color.b, color.a; end
+function clr(color) return color.r, color.g, color.b, color.a end
 
 if CLIENT then
    -- Is screenpos on screen?
@@ -148,6 +148,10 @@ function util.StartBleeding(ent, dmg, t)
                 function() DoBleed(ent) end)
 end
 
+function util.StopBleeding(ent)
+   timer.Remove("bleed" .. ent:EntIndex())
+end
+
 local zapsound = Sound("npc/assassin/ball_zap1.wav")
 function util.EquipmentDestroyed(pos)
    local effect = EffectData()
@@ -166,22 +170,15 @@ function util.BasicKeyHandler(pnl, kc)
    end
 end
 
-function util.SafeRemoveHook(event, name)
-   local h = hook.GetTable()
-   if h and h[event] and h[event][name] then
-      hook.Remove(event, name)
-   end
-end
-
 function util.noop() end
 function util.passthrough(x) return x end
 
--- Nice Fisher-Yates implementation, from Wikipedia
+-- Fisher-Yates shuffle
 local rand = math.random
 function table.Shuffle(t)
   local n = #t
 
-  while n > 2 do
+  while n > 1 do
     -- n is now the last pertinent index
     local k = rand(n) -- 1 <= k <= n
     -- Quick swap
@@ -238,7 +235,7 @@ function table.CopyKeys(tbl, keys)
    local val = nil
    for _, k in pairs(keys) do
       val = tbl[k]
-      if type(val) == "table" then
+      if istable(val) then
          out[k] = table.Copy(val)
       else
          out[k] = val
@@ -253,7 +250,7 @@ local gsub = string.gsub
 -- returns "Bob killed Joe"
 -- No spaces or special chars in parameter name, just alphanumerics.
 function string.Interp(str, tbl)
-   return gsub(str, '{(%w+)}', tbl)
+   return gsub(str, "{(%w+)}", tbl)
 end
 
 -- Short helper for input.LookupBinding, returns capitalised key or a default
@@ -295,8 +292,9 @@ function IsRagdoll(ent)
 end
 
 local band = bit.band
+local tobit = bit.tobit
 function util.BitSet(val, bit)
-   return band(val, bit) == bit
+   return band(val, bit) == tobit(bit)
 end
 
 if CLIENT then
@@ -306,7 +304,7 @@ if CLIENT then
       wounded = Color(230, 215, 10, 255),
       badwound= Color(255, 140, 0, 255),
       death   = Color(255, 0, 0, 255)
-   };
+   }
 
    function util.HealthToString(health, maxhealth)
       maxhealth = maxhealth or 100
@@ -330,10 +328,11 @@ if CLIENT then
       med  = Color(245, 220, 60, 255),
       low  = Color(255, 180, 0, 255),
       min  = Color(255, 130, 0, 255),
-   };
+   }
 
+   local karma_max = CreateConVar("ttt_karma_max", "1000", FCVAR_REPLICATED)
    function util.KarmaToString(karma)
-      local maxkarma = GetGlobalInt("ttt_karma_max", 1000)
+      local maxkarma = karma_max:GetInt()
 
       if karma > maxkarma * 0.89 then
          return "karma_max", karmacolors.max
@@ -360,13 +359,28 @@ end
 -- Like string.FormatTime but simpler (and working), always a string, no hour
 -- support
 function util.SimpleTime(seconds, fmt)
-	if not seconds then seconds = 0 end
+   if not seconds then seconds = 0 end
 
-    local ms = (seconds - math.floor(seconds)) * 100
-    seconds = math.floor(seconds)
-    local s = seconds % 60
-    seconds = (seconds - s) / 60
-    local m = seconds % 60
+   local ms = (seconds - math.floor(seconds)) * 100
+   seconds = math.floor(seconds)
+   local s = seconds % 60
+   seconds = (seconds - s) / 60
+   local m = seconds % 60
 
-    return string.format(fmt, m, s, ms)
+   return string.format(fmt, m, s, ms)
+end
+
+-- Returns the number of bits required to network an integer
+function util.BitsRequired(num, signed)
+   local bits, max = 0, 1
+   while max <= num do
+      bits = bits + 1
+      max = max + max
+   end
+
+   if signed then
+      bits = math.min(bits + 1, 32)
+   end
+
+   return bits
 end

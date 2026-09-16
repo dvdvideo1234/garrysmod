@@ -11,6 +11,8 @@ surface.CreateFont( "ScoreboardDefaultTitle", {
 	weight	= 800
 } )
 
+local mWheelMat = Material( "gui/mwheel.png" )
+
 --
 -- This defines a new panel type for the player row. The player row is given a player
 -- and then from that point on it pretty much looks after itself. It updates player info
@@ -37,6 +39,36 @@ local PLAYER_LINE = {
 		self.Mute = self:Add( "DImageButton" )
 		self.Mute:SetSize( 32, 32 )
 		self.Mute:Dock( RIGHT )
+		self.Mute.OnMouseWheeled = function( s, delta )
+			-- Clamp the old value to the closest 5, to deal with floating point imprecision
+			local oldValue = math.floor( self.Player:GetVoiceVolumeScale() * 100 )
+			oldValue = math.Round( oldValue / 5 ) * 5
+
+			self.Player:SetVoiceVolumeScale( ( oldValue + ( delta * 5 ) ) / 100 )
+			s.LastWheelTick = CurTime()
+		end
+		self.Mute:NoClipping( true )
+		self.Mute.PaintOver = function( s, w, h )
+			if ( !IsValid( self.Player ) ) then return end
+
+			if ( s.Hovered ) then  s.LastWheelTick = CurTime() end
+
+			local time = math.Clamp( CurTime() - ( s.LastWheelTick or 0 ), 0, 0.75 ) / 0.75
+
+			local bgAlpha = 255 - time * 255
+			if ( bgAlpha <= 0 ) then return end
+
+			local x = w + 8
+			w = w * 1.5
+
+			draw.RoundedBox( 4, x, 0, w, h, Color( 0, 0, 0, bgAlpha * 0.8 ) )
+			draw.SimpleText( math.Round( self.Player:GetVoiceVolumeScale() * 100 ) .. "%", "DermaDefault",
+				x + ( w / 2 ) + 5, h * 0.5, Color( 255, 255, 255, bgAlpha ), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+
+			surface.SetMaterial( mWheelMat )
+			surface.SetDrawColor( 255, 255, 255, bgAlpha )
+			surface.DrawTexturedRect( x, ( h / 2 - 8 ), 16, 16 )
+		end
 
 		self.Ping = self:Add( "DLabel" )
 		self.Ping:Dock( RIGHT )
@@ -91,7 +123,7 @@ local PLAYER_LINE = {
 			self.PName = self.Player:Nick()
 			self.Name:SetText( self.PName )
 		end
-		
+
 		if ( self.NumKills == nil || self.NumKills != self.Player:Frags() ) then
 			self.NumKills = self.Player:Frags()
 			self.Kills:SetText( self.NumKills )
@@ -119,7 +151,7 @@ local PLAYER_LINE = {
 				self.Mute:SetImage( "icon32/unmuted.png" )
 			end
 
-			self.Mute.DoClick = function() self.Player:SetMuted( !self.Muted ) end
+			self.Mute.DoClick = function( s ) self.Player:SetMuted( !self.Muted ) end
 
 		end
 
@@ -142,30 +174,33 @@ local PLAYER_LINE = {
 
 	Paint = function( self, w, h )
 
+		if ( !IsValid( self.Player ) ) then return end
+
+		draw.RoundedBox( 4, 0, 0, w, h, self:GetLineColor() )
+
+	end,
+
+	GetLineColor = function( self )
+
+		-- We draw our background a different colour based on the status of the player
+
 		if ( !IsValid( self.Player ) ) then
-			return
+			return Color( 230, 230, 230, 255 )
 		end
 
-		--
-		-- We draw our background a different colour based on the status of the player
-		--
-
 		if ( self.Player:Team() == TEAM_CONNECTING ) then
-			draw.RoundedBox( 4, 0, 0, w, h, Color( 200, 200, 200, 200 ) )
-			return
+			return Color( 200, 200, 200, 200 )
 		end
 
 		if ( !self.Player:Alive() ) then
-			draw.RoundedBox( 4, 0, 0, w, h, Color( 230, 200, 200, 255 ) )
-			return
+			return Color( 230, 200, 200, 255 )
 		end
 
 		if ( self.Player:IsAdmin() ) then
-			draw.RoundedBox( 4, 0, 0, w, h, Color( 230, 255, 230, 255 ) )
-			return
+			return Color( 230, 255, 230, 255 )
 		end
 
-		draw.RoundedBox( 4, 0, 0, w, h, Color( 230, 230, 230, 255 ) )
+		return Color( 230, 230, 230, 255 )
 
 	end
 }
@@ -188,7 +223,7 @@ local SCORE_BOARD = {
 
 		self.Name = self.Header:Add( "DLabel" )
 		self.Name:SetFont( "ScoreboardDefaultTitle" )
-		self.Name:SetTextColor( Color( 255, 255, 255, 255 ) )
+		self.Name:SetTextColor( color_white )
 		self.Name:Dock( TOP )
 		self.Name:SetHeight( 40 )
 		self.Name:SetContentAlignment( 5 )
@@ -196,7 +231,7 @@ local SCORE_BOARD = {
 
 		--self.NumPlayers = self.Header:Add( "DLabel" )
 		--self.NumPlayers:SetFont( "ScoreboardDefault" )
-		--self.NumPlayers:SetTextColor( Color( 255, 255, 255, 255 ) )
+		--self.NumPlayers:SetTextColor( color_white )
 		--self.NumPlayers:SetPos( 0, 100 - 30 )
 		--self.NumPlayers:SetSize( 300, 30 )
 		--self.NumPlayers:SetContentAlignment( 4 )
@@ -226,8 +261,8 @@ local SCORE_BOARD = {
 		--
 		-- Loop through each player, and if one doesn't have a score entry - create it.
 		--
-		local plyrs = player.GetAll()
-		for id, pl in pairs( plyrs ) do
+
+		for id, pl in player.Iterator() do
 
 			if ( IsValid( pl.ScoreEntry ) ) then continue end
 

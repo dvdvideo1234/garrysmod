@@ -14,7 +14,7 @@ if CLIENT then
    SWEP.EquipMenuData = {
       type = "item_weapon",
       desc = "decoy_desc"
-   };
+   }
 
    SWEP.Icon                = "vgui/ttt/icon_beacon"
 end
@@ -65,7 +65,7 @@ local throwsound = Sound( "Weapon_SLAM.SatchelThrow" )
 -- places.
 function SWEP:DecoyDrop()
    if SERVER then
-      local ply = self.Owner
+      local ply = self:GetOwner()
       if not IsValid(ply) then return end
 
       if self.Planted then return end
@@ -103,7 +103,7 @@ end
 
 function SWEP:DecoyStick()
    if SERVER then
-      local ply = self.Owner
+      local ply = self:GetOwner()
       if not IsValid(ply) then return end
 
       if self.Planted then return end
@@ -144,7 +144,7 @@ function SWEP:DecoyStick()
 end
 
 function SWEP:PlacedDecoy(decoy)
-   self.Owner.decoy = decoy
+   self:GetOwner().decoy = decoy
 
    self:TakePrimaryAmmo(1)
 
@@ -160,7 +160,7 @@ function SWEP:Reload()
 end
 
 function SWEP:OnRemove()
-   if CLIENT and IsValid(self.Owner) and self.Owner == LocalPlayer() and self.Owner:Alive() then
+   if CLIENT and IsValid(self:GetOwner()) and self:GetOwner() == LocalPlayer() and self:GetOwner():Alive() then
       RunConsoleCommand("lastinv")
    end
 end
@@ -174,15 +174,15 @@ if CLIENT then
 end
 
 function SWEP:Deploy()
-   self.Owner:DrawViewModel(false)
+   self:GetOwner():DrawViewModel(false)
    return true
 end
 
-function SWEP:DrawWorldModel()
-   if not IsValid(self.Owner) then
-      self:DrawModel()
+function SWEP:DrawWorldModel(flags)
+   if not IsValid(self:GetOwner()) then
+      self:DrawModel(flags)
    end
 end
 
-function SWEP:DrawWorldModelTranslucent()
+function SWEP:DrawWorldModelTranslucent(flags)
 end

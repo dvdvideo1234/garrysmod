@@ -2,12 +2,15 @@
 local MapPatterns = {}
 local MapNames = {}
 
+local AddonMaps = {}
+
 local function UpdateMaps()
 
 	MapPatterns = {}
 	MapNames = {}
 
 	MapNames[ "aoc_" ] = "Age of Chivalry"
+	MapNames[ "infra_" ] = "INFRA"
 
 	MapPatterns[ "^asi-" ] = "Alien Swarm"
 	MapNames[ "lobby" ] = "Alien Swarm"
@@ -22,6 +25,7 @@ local function UpdateMaps()
 	MapNames[ "free_" ] = "Blade Symphony"
 	MapNames[ "practice_box" ] = "Blade Symphony"
 	MapNames[ "tut_training" ] = "Blade Symphony"
+	MapNames[ "lightstyle_test" ] = "Blade Symphony"
 
 	MapNames[ "ar_" ] = "Counter-Strike"
 	MapNames[ "cs_" ] = "Counter-Strike"
@@ -29,7 +33,17 @@ local function UpdateMaps()
 	MapNames[ "es_" ] = "Counter-Strike"
 	MapNames[ "fy_" ] = "Counter-Strike"
 	MapNames[ "gd_" ] = "Counter-Strike"
+	MapNames[ "dz_" ] = "Counter-Strike"
 	MapNames[ "training1" ] = "Counter-Strike"
+	MapNames[ "lobby_mapveto" ] = "Counter-Strike"
+
+	-- Various custom cs maps
+	MapNames[ "35hp_" ] = "Counter-Strike (Custom)"
+	MapNames[ "aim_" ] = "Counter-Strike (Custom)"
+	MapNames[ "awp_" ] = "Counter-Strike (Custom)"
+	MapNames[ "am_" ] = "Counter-Strike (Custom)"
+	MapNames[ "fy_" ] = "Counter-Strike (Custom)"
+	MapNames[ "1v1_" ] = "Counter-Strike (Custom)"
 
 	MapNames[ "dod_" ] = "Day Of Defeat"
 
@@ -53,16 +67,58 @@ local function UpdateMaps()
 	MapNames[ "sav_dojo6" ] = "Dystopia"
 	MapNames[ "varena" ] = "Dystopia"
 
-	MapNames[ "d1_" ] = "Half-Life 2"
-	MapNames[ "d2_" ] = "Half-Life 2"
-	MapNames[ "d3_" ] = "Half-Life 2"
+	-- Do these manually, so edits of these maps don't end up in the same category.
+	local HL2Maps = {
+		"d1_trainstation_01", "d1_trainstation_02", "d1_trainstation_03", "d1_trainstation_04", "d1_trainstation_05", "d1_trainstation_06",
+		"d1_canals_01", "d1_canals_01a", "d1_canals_02",  "d1_canals_03", "d1_canals_05", "d1_canals_06", "d1_canals_07", "d1_canals_08", "d1_canals_09",
+		"d1_canals_10", "d1_canals_11","d1_canals_12", "d1_canals_13", "d1_eli_01", "d1_eli_02",
+		"d1_town_01", "d1_town_01a", "d1_town_02", "d1_town_02a", "d1_town_03", "d1_town_04","d1_town_05",
+		"d2_coast_01", "d2_coast_03", "d2_coast_04", "d2_coast_05","d2_coast_07", "d2_coast_08", "d2_coast_09", "d2_coast_10", "d2_coast_11", "d2_coast_12",
+		"d2_prison_01", "d2_prison_02", "d2_prison_03", "d2_prison_04", "d2_prison_05", "d2_prison_06", "d2_prison_07", "d2_prison_08",
+		"d3_c17_01", "d3_c17_02", "d3_c17_03", "d3_c17_04", "d3_c17_05", "d3_c17_06a", "d3_c17_06b", "d3_c17_07", "d3_c17_08",
+		"d3_c17_09", "d3_c17_10a", "d3_c17_10b", "d3_c17_11", "d3_c17_12", "d3_c17_12b", "d3_c17_13",
+		"d3_citadel_01", "d3_citadel_02", "d3_citadel_03", "d3_citadel_04", "d3_citadel_05", "d3_breen_01"
+	}
+	for _, map in ipairs( HL2Maps ) do MapNames[ map ] = "Half-Life 2" end
+
+	local EP1Maps = {
+		"ep1_citadel_00", "ep1_citadel_01", "ep1_citadel_02", "ep1_citadel_02b", "ep1_citadel_03", "ep1_citadel_04", "ep1_c17_00",
+		"ep1_c17_00a", "ep1_c17_01", "ep1_c17_01a", "ep1_c17_02", "ep1_c17_02b", "ep1_c17_02a", "ep1_c17_05", "ep1_c17_06"
+	}
+	for _, map in ipairs( EP1Maps ) do MapNames[ map ] = "Half-Life 2: Episode 1" end
+
+	local EP2Maps = {
+		"ep2_outland_01", "ep2_outland_01a", "ep2_outland_02", "ep2_outland_03", "ep2_outland_04", "ep2_outland_05", "ep2_outland_06", "ep2_outland_06a", "ep2_outland_07",
+		"ep2_outland_08", "ep2_outland_09", "ep2_outland_10", "ep2_outland_10a", "ep2_outland_11", "ep2_outland_11a", "ep2_outland_11b", "ep2_outland_12", "ep2_outland_12a"
+	}
+	for _, map in ipairs( EP2Maps ) do MapNames[ map ] = "Half-Life 2: Episode 2" end
+
+	local GStringMaps = {
+		"dragon_girl", "dragon_girl1", "dragon_girl2", "dragon_girl3", "free_mars1", "free_mars2",
+		"free_mars3", "hazardous_ai", "hazardous_ai_more",  "hazardous_ai0", "hazardous_ai01", "hazardous_ai2", "hazardous_ai3", "hazardous_ai3b", "hazardous_ai4",
+		"hazardous_ai5", "hazardous_ai6","hazardous_ai7", "human_waste_x1", "human_waste1", "human_waste2",
+		"human_waste3", "human_waste4", "human_waste5", "human_waste6", "human_waste7", "human_waste8","human_waste9",
+		"lab_rat", "lab_rat1", "money_is_dead", "money_is_dead_1","money_is_dead0", "money_is_dead2", "money_is_dead2_1", "money_is_dead2_2", "money_is_dead3", "money_is_dead3_2",
+		"money_is_dead4", "money_is_dead4_2", "money_is_dead4_3", "murdock_air_x1", "murdock_air_x2", "murdock_air_x3", "murdock_air_x4", "murdock_air_x5",
+		"murdock_air_x6", "murdock_air1", "murdock_air2", "murdock_air3", "murdock_air4", "murdock_air5", "murdock_air6", "murdock_air7", "murdock_air8",
+		"murdock_air9", "perp_org1", "perp_org2", "perp_org3", "perp_org4", "sabotage", "sabotage1",
+		"smog_storm", "smog_storm1", "smog_storm2", "smog_storm3", "space_race", "space_race1",
+		"space_race2", "space_race3", "space_race4", "space_race5", "terror_management_x1", "terror_management_x2",
+		"terror_management_x3", "the_call1"
+	}
+	for _, map in ipairs( GStringMaps ) do MapNames[ map ] = "G String" end
+
+	local InsurgencyMaps = {
+		"buhriz", "buhriz_coop", "buhriz_night", "contact", "contact_coop", "contact_night", "district", "district_coop", "district_night",
+		"drycanal", "drycanal_coop", "drycanal_night", "embassy", "embassy_coop", "embassy_night", "heights", "heights_coop", "heights_night",
+		"kandagal", "kandagal_night", "market", "market_coop", "market_night", "ministry", "ministry_coop", "ministry_night", "panj", "panj_night",
+		"peak", "peak_night", "revolt", "revolt_coop", "revolt_night", "siege", "siege_coop", "sinjar", "sinjar_coop", "sinjar_night", "station",
+		"station_night", "tell", "tell_coop", "tell_night", "training", "uprising", "uprising_night", "verticality", "verticality_coop", "verticality_night"
+	}
+	for _, map in ipairs( InsurgencyMaps ) do MapNames[ map ] = "Insurgency" end
 
 	MapNames[ "dm_" ] = "Half-Life 2: Deathmatch"
 	MapNames[ "halls3" ] = "Half-Life 2: Deathmatch"
-
-	MapNames[ "ep1_" ] = "Half-Life 2: Episode 1"
-	MapNames[ "ep2_" ] = "Half-Life 2: Episode 2"
-	MapNames[ "ep3_" ] = "Half-Life 2: Episode 3"
 
 	MapNames[ "d2_lostcoast" ] = "Half-Life 2: Lost Coast"
 
@@ -82,6 +138,8 @@ local function UpdateMaps()
 	MapNames[ "undertow" ] = "Half-Life Deathmatch"
 
 	MapNames[ "ins_" ] = "Insurgency"
+
+	MapNames[ "t_" ] = "Klaus Veen's Treason"
 
 	MapNames[ "l4d_" ] = "Left 4 Dead"
 
@@ -128,15 +186,39 @@ local function UpdateMaps()
 	MapNames[ "rd_" ] = "Team Fortress 2"
 	MapNames[ "pd_" ] = "Team Fortress 2"
 	MapNames[ "sd_" ] = "Team Fortress 2"
-	MapNames[ "tc_" ] = "Team Fortress 2"
-	MapNames[ "tr_" ] = "Team Fortress 2"
+	MapNames[ "tc_" ] = "Team Fortress 2" -- Territory Control
+	MapNames[ "tr_" ] = "Team Fortress 2" -- Training
 	MapNames[ "trade_" ] = "Team Fortress 2"
-	MapNames[ "pass_" ] = "Team Fortress 2"
+	MapNames[ "pass_" ] = "Team Fortress 2" -- PASS time
+	MapNames[ "vsh_" ] = "Team Fortress 2" -- Versus Saxton Hale
+	MapNames[ "zi_" ] = "Team Fortress 2" -- Zombie Invasion
+	MapNames[ "tow_" ] = "Team Fortress 2" -- Tug of War
+	MapNames[ "2koth_" ] = "Team Fortress 2" -- Double King of the Hill
+	MapNames[ "cppl_" ] = "Team Fortress 2" -- Control Points => Payload
+	MapNames[ "htf_" ] = "Team Fortress 2" -- Hold the Flag
 
 	MapNames[ "zpa_" ] = "Zombie Panic! Source"
 	MapNames[ "zpl_" ] = "Zombie Panic! Source"
 	MapNames[ "zpo_" ] = "Zombie Panic! Source"
 	MapNames[ "zps_" ] = "Zombie Panic! Source"
+	MapNames[ "zph_" ] = "Zombie Panic! Source"
+
+	MapNames[ "fof_" ] = "Fistful of Frags"
+	MapNames[ "fofhr_" ] = "Fistful of Frags"
+	MapNames[ "cm_" ] = "Fistful of Frags"
+	MapNames[ "gt_" ] = "Fistful of Frags"
+	MapNames[ "tp_" ] = "Fistful of Frags"
+	MapNames[ "vs_" ] = "Fistful of Frags"
+
+	MapNames[ "ff_" ] = "Fortress Forever"
+	MapNames[ "mcv_" ] = "Military Conflict: Vietnam"
+
+	local BlackMesaDMMaps = {
+		"dm_boom", "dm_bounce", "dm_chopper", "dm_crossfire", "dm_gasworks", "dm_lambdabunker", "dm_power", "dm_rail", "dm_stack",
+		"dm_stalkyard", "dm_subtransit", "dm_undertow"
+	}
+	for _, map in ipairs( BlackMesaDMMaps ) do MapNames[ map ] = "Black Mesa" end
+	MapNames[ "bm_" ] = "Black Mesa"
 
 	MapNames[ "bhop_" ] = "Bunny Hop"
 	MapNames[ "cinema_" ] = "Cinema"
@@ -164,6 +246,8 @@ local function UpdateMaps()
 	MapNames[ "zm_" ] = "Zombie Survival"
 	MapNames[ "zombiesurvival_" ] = "Zombie Survival"
 	MapNames[ "zs_" ] = "Zombie Survival"
+	MapNames[ "ze_" ] = "Zombie Escape"
+	MapNames[ "coop_" ] = "Cooperative"
 
 	local GamemodeList = engine.GetGamemodes()
 
@@ -172,14 +256,24 @@ local function UpdateMaps()
 		local Name = gm.title or "Unnammed Gamemode"
 		local Maps = string.Split( gm.maps, "|" )
 
-		if ( Maps && gm.maps != "" ) then
+		if ( Maps and gm.maps != "" ) then
 
-			for k, pattern in ipairs( Maps ) do
+			for _, pattern in ipairs( Maps ) do
 				-- When in doubt, just try to match it with string.find
 				MapPatterns[ string.lower( pattern ) ] = Name
 			end
 
 		end
+
+	end
+
+	AddonMaps = {}
+	for k, addon in ipairs( engine.GetAddons() ) do
+
+		local name = addon.title or "Unnammed Addon"
+
+		local files = file.Find( "maps/*.bsp", name )
+		if ( #files > 0 ) then AddonMaps[ name ] = files end
 
 	end
 
@@ -190,7 +284,31 @@ local favmaps
 local function LoadFavourites()
 
 	local cookiestr = cookie.GetString( "favmaps" )
-	favmaps = favmaps || (cookiestr && string.Explode( ";", cookiestr ) || {})
+	favmaps = favmaps or ( cookiestr and string.Split( cookiestr, ";" ) or {} )
+
+end
+
+function UpdateAddonMapList()
+
+	local json = util.TableToJSON( AddonMaps )
+	if ( !json ) then return end
+
+	pnlMainMenu:Call( "UpdateAddonMaps(" .. json .. ")" )
+
+end
+
+-- Called from JS when starting a new game
+function UpdateMapList()
+
+	UpdateAddonMapList()
+
+	local mapList = GetMapList()
+	if ( !mapList ) then return end
+
+	local json = util.TableToJSON( mapList )
+	if ( !json ) then return end
+
+	pnlMainMenu:Call( "UpdateMaps(" .. json .. ")" )
 
 end
 
@@ -214,6 +332,7 @@ local IgnoreMaps = {
 	[ "d2_coast_02" ] = true,
 	[ "d3_c17_02_camera" ] = true,
 	[ "ep1_citadel_00_demo" ] = true,
+	[ "c5m1_waterfront_sndscape" ] = true,
 	[ "intro" ] = true,
 	[ "test" ] = true
 }
@@ -228,6 +347,11 @@ local function RefreshMaps( skip )
 
 	local maps = file.Find( "maps/*.bsp", "GAME" )
 	LoadFavourites()
+
+	local fav_lookup = {}
+	for _, mapname in ipairs( favmaps ) do
+		fav_lookup[ mapname ] = true
+	end
 
 	for k, v in ipairs( maps ) do
 		local name = string.lower( string.gsub( v, "%.bsp$", "" ) )
@@ -263,21 +387,13 @@ local function RefreshMaps( skip )
 		-- Throw all uncategorised maps into Other
 		Category = Category or "Other"
 
-		local fav
+		local csgo = false
 
-		if ( table.HasValue( favmaps, name ) ) then
-			fav = true
-		end
-
-		local csgo
-
-		if ( Category == "Counter-Strike" ) then
-			if ( file.Exists( "maps/" .. name .. ".bsp", "csgo" ) ) then
-				if ( file.Exists( "maps/" .. name .. ".bsp", "cstrike" ) ) then -- Map also exists in CS:GO
-					csgo = true
-				else
-					Category = "CS: Global Offensive"
-				end
+		if ( Category == "Counter-Strike" and file.Exists( "maps/" .. name .. ".bsp", "csgo" ) ) then
+			if ( file.Exists( "maps/" .. name .. ".bsp", "cstrike" ) ) then -- Map also exists in CS:GO
+				csgo = true
+			else
+				Category = "Counter-Strike: GO"
 			end
 		end
 
@@ -287,7 +403,7 @@ local function RefreshMaps( skip )
 
 		table.insert( MapList[ Category ], name )
 
-		if ( fav ) then
+		if ( fav_lookup[ name ] ) then
 			if ( !MapList[ "Favourites" ] ) then
 				MapList[ "Favourites" ] = {}
 			end
@@ -296,23 +412,30 @@ local function RefreshMaps( skip )
 		end
 
 		if ( csgo ) then
-			if ( !MapList[ "CS: Global Offensive" ] ) then
-				MapList[ "CS: Global Offensive" ] = {}
+			if ( !MapList[ "Counter-Strike: GO" ] ) then
+				MapList[ "Counter-Strike: GO" ] = {}
 			end
-			-- We have to make the CS:GO name different from the CS:S name to prevent Favourites conflicts
-			table.insert( MapList[ "CS: Global Offensive" ], name .. " " )
+			-- HACK: We have to make the CS:GO name different from the CS:S name to prevent Favourites conflicts
+			table.insert( MapList[ "Counter-Strike: GO" ], name .. " " )
 		end
 
 	end
 
+	-- Send the new list to the HTML menu
+	UpdateMapList()
+
 end
 
-hook.Add( "MenuStart", "FindMaps", RefreshMaps )
+-- Update only after a short while for when these hooks are called very rapidly back to back
+local function DelayedRefreshMaps()
+	timer.Create( "menu_refreshmaps", 0.1, 1, RefreshMaps )
+end
 
-hook.Add( "GameContentChanged", "RefreshMaps", RefreshMaps )
+hook.Add( "MenuStart", "FindMaps", DelayedRefreshMaps )
+hook.Add( "GameContentChanged", "RefreshMaps", DelayedRefreshMaps )
 
+-- Nice maplist accessor instead of a global table
 function GetMapList()
-	-- Nice maplist accessor instead of a global table
 	return MapList
 end
 
@@ -355,6 +478,6 @@ function LoadLastMap()
 
 	if ( !file.Exists( "maps/" .. map .. ".bsp", "GAME" ) ) then return end
 
-	pnlMainMenu:Call( "SetLastMap('" .. map .. "','" .. cat .. "')" )
+	pnlMainMenu:Call( "SetLastMap('" .. map:JavascriptSafe() .. "','" .. cat:JavascriptSafe() .. "')" )
 
 end

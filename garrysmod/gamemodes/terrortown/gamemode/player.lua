@@ -45,7 +45,7 @@ end
 
 function GM:NetworkIDValidated( name, steamid )
    -- edge case where player authed after initspawn
-   for _, p in pairs(player.GetAll()) do
+   for _, p in player.Iterator() do
       if IsValid(p) and p:SteamID() == steamid and p.delay_karma_recall then
          KARMA.LateRecallAndSet(p)
          return
@@ -54,6 +54,9 @@ function GM:NetworkIDValidated( name, steamid )
 end
 
 function GM:PlayerSpawn(ply)
+   -- stop bleeding
+   util.StopBleeding(ply)
+
    -- Some spawns may be tilted
    ply:ResetViewRoll()
 
@@ -113,7 +116,7 @@ function GM:IsSpawnpointSuitable(ply, spwn, force, rigged)
 
    local blocking = ents.FindInBox(pos + Vector( -16, -16, 0 ), pos + Vector( 16, 16, 64 ))
 
-   for k, p in pairs(blocking) do
+   for k, p in ipairs(blocking) do
       if IsValid(p) and p:IsPlayer() and p:IsTerror() and p:Alive() then
          if force then
             p:Kill()
@@ -133,8 +136,8 @@ local SpawnTypes = {"info_player_deathmatch", "info_player_combine",
 
 function GetSpawnEnts(shuffled, force_all)
    local tbl = {}
-   for k, classname in pairs(SpawnTypes) do
-      for _, e in pairs(ents.FindByClass(classname)) do
+   for k, classname in ipairs(SpawnTypes) do
+      for _, e in ipairs(ents.FindByClass(classname)) do
          if IsValid(e) and (not e.BeingRemoved) then
             table.insert(tbl, e)
          end
@@ -146,7 +149,7 @@ function GetSpawnEnts(shuffled, force_all)
    -- uses it for observer starts that are in places where players cannot really
    -- spawn well. At all.
    if force_all or #tbl == 0 then
-      for _, e in pairs(ents.FindByClass("info_player_start")) do
+      for _, e in ipairs(ents.FindByClass("info_player_start")) do
          if IsValid(e) and (not e.BeingRemoved) then
             table.insert(tbl, e)
          end
@@ -179,11 +182,11 @@ local function PointsAroundSpawn(spwn)
       pos + Vector(-w,  w,  0),
       pos + Vector( w, -w,  0)
       --pos + Vector( 0,  0,  h) -- just in case we're outside
-   };
+   }
 end
 
 function GM:PlayerSelectSpawn(ply)
-   if (not self.SpawnPoints) or (table.Count(self.SpawnPoints) == 0) or (not IsTableOfEntitiesValid(self.SpawnPoints)) then
+   if (not self.SpawnPoints) or (table.IsEmpty(self.SpawnPoints)) or (not IsTableOfEntitiesValid(self.SpawnPoints)) then
 
       self.SpawnPoints = GetSpawnEnts(true, false)
 
@@ -194,8 +197,7 @@ function GM:PlayerSelectSpawn(ply)
       -- ones anyway.
    end
 
-   local num = table.Count(self.SpawnPoints)
-   if num == 0 then
+   if table.IsEmpty(self.SpawnPoints) then
       Error("No spawn entity found!\n")
       return
    end
@@ -341,7 +343,7 @@ function GM:KeyPress(ply, key)
          local ang = ply:EyeAngles()
 
          local target = ply:GetObserverTarget()
-         if IsValid(target) and target:IsPlayer() then
+         if IsValid(target) and target:IsPlayer() and ply:GetObserverMode() != OBS_MODE_ROAMING then -- Only set the spectator's position to the player they are spectating if they are in chase or eye mode. They can use the reload key if they want to return to the person they're spectating
             pos = target:EyePos()
             ang = target:EyeAngles()
          end
@@ -355,7 +357,7 @@ function GM:KeyPress(ply, key)
          return true
       elseif key == IN_JUMP then
          -- unfuck if you're on a ladder etc
-         if not (ply:GetMoveType() == MOVETYPE_NOCLIP) then
+         if (ply:GetMoveType() != MOVETYPE_NOCLIP) then
             ply:SetMoveType(MOVETYPE_NOCLIP)
          end
       elseif key == IN_RELOAD then
@@ -384,7 +386,7 @@ function GM:KeyRelease(ply, key)
          endpos = ply:GetShootPos() + ply:GetAimVector() * 84,
          filter = ply,
          mask   = MASK_SHOT
-      });
+      })
 
       if tr.Hit and IsValid(tr.Entity) then
          if tr.Entity.CanUseKey and tr.Entity.UseOverride then
@@ -491,7 +493,7 @@ local deathsounds = {
    Sound("hostage/hpain/hpain4.wav"),
    Sound("hostage/hpain/hpain5.wav"),
    Sound("hostage/hpain/hpain6.wav")
-};
+}
 
 
 local function PlayDeathSound(victim)
@@ -507,8 +509,8 @@ local function CheckCreditAward(victim, attacker)
 
    -- DETECTIVE AWARD
    if IsValid(attacker) and attacker:IsPlayer() and attacker:IsActiveDetective() and victim:IsTraitor() then
-      local amt = GetConVarNumber("ttt_det_credits_traitordead") or 1
-      for _, ply in pairs(player.GetAll()) do
+      local amt = GetConVar("ttt_det_credits_traitordead"):GetInt()
+      for _, ply in player.Iterator() do
          if ply:IsActiveDetective() then
             ply:AddCredits(amt)
          end
@@ -523,8 +525,8 @@ local function CheckCreditAward(victim, attacker)
       local inno_alive = 0
       local inno_dead = 0
       local inno_total = 0
-      
-      for _, ply in pairs(player.GetAll()) do
+
+      for _, ply in player.Iterator() do
          if not ply:GetTraitor() then
             if ply:IsTerror() then
                inno_alive = inno_alive + 1
@@ -546,15 +548,15 @@ local function CheckCreditAward(victim, attacker)
       end
 
       local pct = inno_dead / inno_total
-      if pct >= GetConVarNumber("ttt_credits_award_pct") then
+      if pct >= GetConVar("ttt_credits_award_pct"):GetFloat() then
          -- Traitors have killed sufficient people to get an award
-         local amt = GetConVarNumber("ttt_credits_award_size")
+         local amt = GetConVar("ttt_credits_award_size"):GetInt()
 
          -- If size is 0, awards are off
          if amt > 0 then
             LANG.Msg(GetTraitorFilter(true), "credit_tr_all", {num = amt})
 
-            for _, ply in pairs(player.GetAll()) do
+            for _, ply in player.Iterator() do
                if ply:IsActiveTraitor() then
                   ply:AddCredits(amt)
                end
@@ -568,26 +570,23 @@ local function CheckCreditAward(victim, attacker)
 end
 
 function GM:DoPlayerDeath(ply, attacker, dmginfo)
-   if ply:IsSpec() then return end
+   if ply:IsSpec() or IsValid(ply.dying_wep) then return end
 
    -- Experimental: Fire a last shot if ironsighting and not headshot
    if GetConVar("ttt_dyingshot"):GetBool() then
       local wep = ply:GetActiveWeapon()
       if IsValid(wep) and wep.DyingShot and not ply.was_headshot and dmginfo:IsBulletDamage() then
-         local fired = wep:DyingShot()
-         if fired then
-            return
-         end
+         wep:DyingShot()
       end
 
       -- Note that funny things can happen here because we fire a gun while the
-      -- player is dead. Specifically, this DoPlayerDeath is run twice for
-      -- him. This is ugly, and we have to return the first one to prevent crazy
-      -- shit.
+      -- player is dead. Specifically, this DoPlayerDeath can run twice for
+      -- him. This is ugly, and we have to return if ply.dying_wep is set
+      -- to prevent crazy shit.
    end
 
    -- Drop all weapons
-   for k, wep in pairs(ply:GetWeapons()) do
+   for k, wep in ipairs(ply:GetWeapons()) do
       WEPS.DropNotifiedWeapon(ply, wep, true) -- with ammo in them
       wep:DampenDrop()
    end
@@ -644,9 +643,9 @@ function GM:DoPlayerDeath(ply, attacker, dmginfo)
    if IsValid(attacker) and attacker:IsPlayer() then
       local reward = 0
       if attacker:IsActiveTraitor() and ply:GetDetective() then
-         reward = math.ceil(GetConVarNumber("ttt_credits_detectivekill"))
+         reward = GetConVar("ttt_credits_detectivekill"):GetInt()
       elseif attacker:IsActiveDetective() and ply:GetTraitor() then
-         reward = math.ceil(GetConVarNumber("ttt_det_credits_traitorkill"))
+         reward = GetConVar("ttt_det_credits_traitorkill"):GetInt()
       end
 
       if reward > 0 then
@@ -658,7 +657,10 @@ function GM:DoPlayerDeath(ply, attacker, dmginfo)
    end
 end
 
-function GM:PlayerDeath( victim, infl, attacker)
+function GM:PlayerDeath(victim, infl, attacker)
+   -- stop bleeding
+   util.StopBleeding(victim)
+
    -- tell no one
    self:PlayerSilentDeath(victim)
 
@@ -767,7 +769,7 @@ function GM:ScalePlayerDamage(ply, hitgroup, dmginfo)
       local wep = util.WeaponFromDamage(dmginfo)
 
       if IsValid(wep) then
-         local s = wep:GetHeadshotMultiplier(ply, dmginfo) or 2
+         local s = wep.GetHeadshotMultiplier and wep:GetHeadshotMultiplier(ply, dmginfo) or 2
          dmginfo:ScaleDamage(s)
       end
    elseif (hitgroup == HITGROUP_LEFTARM or
@@ -799,7 +801,7 @@ local fallsounds = {
    Sound("player/damage1.wav"),
    Sound("player/damage2.wav"),
    Sound("player/damage3.wav")
-};
+}
 
 function GM:OnPlayerHitGround(ply, in_water, on_floater, speed)
    if in_water or speed < 450 or not IsValid(ply) then return end
@@ -1053,13 +1055,9 @@ function GM:OnNPCKilled() end
 
 -- Drowning and such
 local tm = nil
-local ply = nil
-local plys = nil
 function GM:Tick()
    -- three cheers for micro-optimizations
-   plys = player.GetAll()
-   for i= 1, #plys do
-      ply = plys[i]
+   for _, ply in player.Iterator() do
       tm = ply:Team()
       if tm == TEAM_TERROR and ply:Alive() then
          -- Drowning
@@ -1091,6 +1089,7 @@ function GM:Tick()
          end
 
          -- Run DNA Scanner think also when it is not deployed
+         local wep = ply:GetActiveWeapon()
          if IsValid(ply.scanner_weapon) and wep != ply.scanner_weapon then
             ply.scanner_weapon:Think()
          end

@@ -4,18 +4,29 @@ local PANEL = {}
 AccessorFunc( PANEL, "m_Hue", "Hue" )
 AccessorFunc( PANEL, "m_BaseRGB", "BaseRGB" )
 AccessorFunc( PANEL, "m_OutRGB", "RGB" )
+AccessorFunc( PANEL, "m_DefaultColor", "DefaultColor" )
 
 function PANEL:Init()
 
 	self:SetImage( "vgui/minixhair" )
 	self.Knob:NoClipping( false )
+	local KnobOnMousePressed = self.Knob.OnMousePressed
+	self.Knob.OnMousePressed = function( panel, btnId )
+		if ( btnId == MOUSE_RIGHT ) then
+			self:DoRightClick()
+			return true
+		end
+		if ( btnId != MOUSE_LEFT ) then return true end
+
+		KnobOnMousePressed( panel, btnId )
+	end
 
 	self.BGSaturation = vgui.Create( "DImage", self )
 	self.BGSaturation:SetImage( "vgui/gradient-r" )
 
 	self.BGValue = vgui.Create( "DImage", self )
 	self.BGValue:SetImage( "vgui/gradient-d" )
-	self.BGValue:SetImageColor( Color( 0, 0, 0, 255 ) )
+	self.BGValue:SetImageColor( color_black )
 
 	self:SetBaseRGB( Color( 255, 0, 0 ) )
 	self:SetRGB( Color( 255, 0, 0 ) )
@@ -23,20 +34,29 @@ function PANEL:Init()
 
 	self:SetLockX( nil )
 	self:SetLockY( nil )
+	self:SetDefaultColor( color_white )
 
 end
 
-function PANEL:PerformLayout()
+function PANEL:PerformLayout( w, h )
 
-	DSlider.PerformLayout( self )
+	DSlider.PerformLayout( self, w, h )
 
-	self.BGSaturation:StretchToParent( 0,0,0,0 )
+	self.BGSaturation:StretchToParent( 0, 0, 0, 0 )
 	self.BGSaturation:SetZPos( -9 )
 
-	self.BGValue:StretchToParent( 0,0,0,0 )
+	self.BGValue:StretchToParent( 0, 0, 0, 0 )
 	self.BGValue:SetZPos( -8 )
 
 end
+
+function PANEL:ResetToDefaultValue()
+
+	self:SetColor( self:GetDefaultColor() )
+	self:OnUserChanged( self.m_OutRGB )
+
+end
+
 
 function PANEL:Paint()
 
@@ -76,9 +96,28 @@ function PANEL:UpdateColor( x, y )
 
 end
 
-function PANEL:OnUserChanged()
+function PANEL:OnUserChanged( color )
 
 	-- Override me
+
+end
+
+function PANEL:DoRightClick()
+
+	local m = DermaMenu()
+	m:AddOption( "#tool.reset_to_default", function() self:ResetToDefaultValue() end ):SetIcon( "icon16/arrow_rotate_clockwise.png" )
+	m:AddOption( "#spawnmenu.menu.copy", function() SetClipboardText( table.concat( self.m_OutRGB:ToTable(), " " ) ) end ):SetIcon( "icon16/page_copy.png" )
+	m:Open()
+
+end
+
+function PANEL:OnMousePressed( btnId )
+
+	if ( btnId == MOUSE_MIDDLE ) then self:ResetToDefaultValue() return true end
+	if ( btnId == MOUSE_RIGHT ) then self:DoRightClick() return true end
+	if ( btnId != MOUSE_LEFT ) then return true end
+
+	return self.BaseClass.OnMousePressed( self, btnId )
 
 end
 

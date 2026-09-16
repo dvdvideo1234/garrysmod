@@ -1,4 +1,5 @@
 
+local error = error
 
 module( "matproxy", package.seeall )
 
@@ -10,7 +11,10 @@ ActiveList = {}
 --
 function ShouldOverrideProxy( name )
 
-	return ProxyList[ name ] != nil
+	local t = ProxyList[ name ]
+	if ( t == nil ) then return false end
+
+	return true, t.bind == nil
 
 end
 
@@ -19,8 +23,8 @@ end
 --
 function Add( tbl )
 
-	if ( !tbl.name ) then return; end
-	if ( !tbl.bind ) then return; end
+	if ( !tbl.name ) then error( "bad argument #1 to 'Add' (missing 'name' key)" ) return end
+	--if ( !tbl.bind ) then error( "bad argument #1 to 'Add' (missing 'bind' key)" ) return end
 
 	local bReloading = ProxyList[ tbl.name ] != nil
 
@@ -53,12 +57,12 @@ function Call( name, mat, ent )
 	if ( !proxy ) then return end
 	if ( !proxy.bind ) then return end
 
-	proxy:bind( mat, ent )
+	proxy:bind( proxy.Material, ent )
 
 end
 
 --
--- Called by the engine from OnBind
+-- Called by the engine from Init
 --
 function Init( name, uname, mat, values )
 
@@ -66,14 +70,14 @@ function Init( name, uname, mat, values )
 	if ( !proxy ) then return end
 
 	ActiveList[ uname ] = table.Copy( proxy )
-	local proxy = ActiveList[ uname ];
-
-	if ( !proxy.init ) then return end
-
-	proxy:init( mat, values )
+	local active_proxy = ActiveList[ uname ]
 
 	-- Store these incase we reload
-	proxy.Values	= values
-	proxy.Material	= mat
+	active_proxy.Values = values
+	active_proxy.Material = mat
+
+	if ( !active_proxy.init ) then return end
+
+	active_proxy:init( mat, values )
 
 end

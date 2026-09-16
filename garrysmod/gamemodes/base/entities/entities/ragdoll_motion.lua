@@ -6,14 +6,12 @@ ENT.Spawnable = false
 ENT.AdminOnly = false
 ENT.Editable = true
 
-local matBone = Material( "widgets/bone.png", "unlitsmooth" )
-
 function ENT:SetupDataTables()
 
 	--
 	-- Scale - how far the ragdoll will move in the game world in relation to how far it moved in the real world
 	--
-	self:NetworkVar( "Float", 0, "Scale", { KeyName = "scale", Edit = { type = "Float", min=1, max=512, order = 1 } } )
+	self:NetworkVar( "Float", 0, "Scale", { KeyName = "scale", Edit = { type = "Float", min = 1, max = 512, order = 1 } } )
 
 	--
 	-- Normalize - if enabled the limbs aren't stretched
@@ -58,11 +56,9 @@ function ENT:Initialize()
 
 		local phys = self:GetPhysicsObject()
 		if ( IsValid( phys ) ) then
-
 			phys:Wake()
 			phys:EnableGravity( false )
 			phys:EnableDrag( false )
-
 		end
 
 		local colors = {
@@ -86,7 +82,7 @@ function ENT:PhysicsUpdate( physobj )
 	if ( self:IsPlayerHolding() ) then return end
 	if ( self:IsConstrained() ) then return end
 
-	physobj:SetVelocity( Vector( 0, 0, 0 ) )
+	physobj:SetVelocity( vector_origin )
 	physobj:Sleep()
 
 end
@@ -101,24 +97,28 @@ function ENT:OnRemove()
 		local ragdoll = self:GetTarget()
 		if ( IsValid( ragdoll ) ) then
 			ragdoll:SetRagdollBuildFunction( nil )
+
+			if ( IsValid( ragdoll.MotionSensorController ) && ragdoll.MotionSensorController == self ) then
+				ragdoll.MotionSensorController = nil
+			end
 		end
 
 	end
 
 end
 
-function ENT:Draw()
+function ENT:Draw( flags )
 
 	--
 	-- Don't draw if we're holding the camera
 	--
 	local ply = LocalPlayer()
 	local wep = ply:GetActiveWeapon()
-	if ( wep:IsValid() ) then
-		if ( wep:GetClass() == "gmod_camera" ) then return end
+	if ( IsValid( wep ) && wep:GetClass() == "gmod_camera" ) then
+		return
 	end
 
-	self:DrawModel()
+	self:DrawModel( flags )
 
 end
 
@@ -133,7 +133,7 @@ function ENT:DrawDebug( ragdoll, controller, pos, ang, rotation, scale, center, 
 
 	center = center
 
-	local col_bone = Color( 255, 255, 255, 255 )
+	local col_bone = color_white
 	local col_point = Color( 255, 0, 0, 255 )
 	local col_tran_bn = Color( 0, 255, 0, 255 )
 
@@ -155,16 +155,15 @@ function ENT:DrawDebug( ragdoll, controller, pos, ang, rotation, scale, center, 
 		-- (already rotated)
 		fixedbonepos[i] = fixedbonepos[i] + center
 
-
-		debugoverlay.Box( realbonepos[i], min, max, StayTime, col_point, true )
-		debugoverlay.Box( fixedbonepos[i], min, max, StayTime, col_tran_bn, true )
+		debugoverlay.Box( realbonepos[i], min, max, StayTime, col_point )
+		debugoverlay.Box( fixedbonepos[i], min, max, StayTime, col_tran_bn )
 
 	end
 
 	--
 	-- Draw bones
 	--
-	for k, v in pairs( motionsensor.DebugBones ) do
+	for k, v in ipairs( motionsensor.DebugBones ) do
 
 		debugoverlay.Line( realbonepos[ v[1] ], realbonepos[ v[2] ], StayTime, col_bone, true )
 
@@ -173,7 +172,7 @@ function ENT:DrawDebug( ragdoll, controller, pos, ang, rotation, scale, center, 
 	--
 	-- Draw translated sensor bones
 	--
-	for k, v in pairs( motionsensor.DebugBones ) do
+	for k, v in ipairs( motionsensor.DebugBones ) do
 
 		debugoverlay.Line( fixedbonepos[ v[1] ], fixedbonepos[ v[2] ], StayTime, col_tran_bn, true )
 
@@ -182,26 +181,28 @@ function ENT:DrawDebug( ragdoll, controller, pos, ang, rotation, scale, center, 
 	--
 	-- Draw ragdoll physics bones
 	--
-	for i=0, ragdoll:GetPhysicsObjectCount() - 1 do
+	for i = 0, ragdoll:GetPhysicsObjectCount() - 1 do
 
 		local phys = ragdoll:GetPhysicsObjectNum( i )
 
-		local pos = phys:GetPos()
+		local position = phys:GetPos()
 		local angle = phys:GetAngles()
-		local txt = i
+		local txt = tostring( i )
 
 		if ( ang[i] == nil ) then
 			txt = i .. " (UNSET)"
 		end
 
-		debugoverlay.Text( pos, txt, StayTime )
-		debugoverlay.Axis( pos, angle, 5, StayTime, true )
+		debugoverlay.Text( position, txt, StayTime )
+		debugoverlay.Axis( position, angle, 5, StayTime, true )
 
 	end
 
 end
 
 function ENT:SetRagdoll( ragdoll )
+
+	ragdoll.MotionSensorController = self
 
 	self:SetTarget( ragdoll )
 	ragdoll:PhysWake()
@@ -218,7 +219,7 @@ function ENT:SetRagdoll( ragdoll )
 		local controller = self:GetController()
 		if ( !IsValid( controller ) ) then return end
 
-		local builder = list.Get( "SkeletonConvertor" )[ buildername ]
+		local builder = list.GetEntry( "SkeletonConvertor", buildername )
 		local scale = self:GetScale()
 		local rotation = self:GetAngles()
 		local center = self:GetPos()

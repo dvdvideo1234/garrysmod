@@ -153,7 +153,7 @@ function SWEP:CheckValidity()
 end
 
 local function PlayerStandsOn(ent)
-   for _, ply in pairs(player.GetAll()) do
+   for _, ply in player.Iterator() do
       if ply:GetGroundEntity() == ent and ply:IsTerror() then
          return true
       end
@@ -196,9 +196,9 @@ function SWEP:Think()
       stand_time = CurTime() + 0.1
    end
 
-   self.CarryHack:SetPos(self.Owner:EyePos() + self.Owner:GetAimVector() * 70)
+   self.CarryHack:SetPos(self:GetOwner():EyePos() + self:GetOwner():GetAimVector() * 70)
 
-   self.CarryHack:SetAngles(self.Owner:GetAngles())
+   self.CarryHack:SetAngles(self:GetOwner():GetAngles())
 
    self.EntHolding:PhysWake()
 end
@@ -259,87 +259,76 @@ function SWEP:AllowPickup(target)
 end
 
 function SWEP:DoAttack(pickup)
-   self.Weapon:SetNextPrimaryFire( CurTime() + self.Primary.Delay )
-   self.Weapon:SetNextSecondaryFire( CurTime() + self.Secondary.Delay )
+   self:SetNextPrimaryFire( CurTime() + self.Primary.Delay )
+   self:SetNextSecondaryFire( CurTime() + self.Secondary.Delay )
 
    if IsValid(self.EntHolding) then
-      self.Weapon:SendWeaponAnim( ACT_VM_MISSCENTER )
+      self:SendWeaponAnim( ACT_VM_MISSCENTER )
 
       if (not pickup) and self.EntHolding:GetClass() == "prop_ragdoll" then
          -- see if we can pin this ragdoll to a wall in front of us
-         if not self:PinRagdoll() then
-            -- else just drop it as usual
-            self:Drop()
-         end
-      else
-         self:Drop()
+         self:PinRagdoll()
       end
 
-      self.Weapon:SetNextSecondaryFire(CurTime() + 0.3)
+      -- else just drop it as usual
+      self:Drop()
+
+      self:SetNextSecondaryFire(CurTime() + 0.3)
       return
    end
 
-   local ply = self.Owner
+   local ply = self:GetOwner()
 
    local trace = ply:GetEyeTrace(MASK_SHOT)
-   if IsValid(trace.Entity) then
-      local ent = trace.Entity
-      local phys = trace.Entity:GetPhysicsObject()
+   local ent = trace.Entity
+   if not IsValid(ent) then return end
 
-      if not IsValid(phys) or not phys:IsMoveable() or phys:HasGameFlag(FVPHYSICS_PLAYER_HELD) then
-         return
-      end
+   local phys = ent:GetPhysicsObject()
 
-      -- if we let the client mess with physics, desync ensues
-      if CLIENT then return end
+   if not IsValid(phys) or not phys:IsMoveable() or phys:HasGameFlag(FVPHYSICS_PLAYER_HELD) then
+      return
+   end
 
-      if pickup then
-         if (ply:EyePos() - trace.HitPos):Length() < self:GetRange(ent) then
+   -- if we let the client mess with physics, desync ensues
+   if CLIENT then return end
 
-            if self:AllowPickup(ent) then
-               self:Pickup()
-               self.Weapon:SendWeaponAnim( ACT_VM_HITCENTER )
+   if pickup then
+      if (ply:EyePos() - trace.HitPos):Length() < self:GetRange(ent) then
 
-               -- make the refire slower to avoid immediately dropping
-               local delay = (ent:GetClass() == "prop_ragdoll") and 0.8 or 0.5
+         if self:AllowPickup(ent) then
+            self:Pickup()
+            self:SendWeaponAnim( ACT_VM_HITCENTER )
 
-               self.Weapon:SetNextSecondaryFire(CurTime() + delay)
-               return
-            else
-               local is_ragdoll = trace.Entity:GetClass() == "prop_ragdoll"
+            -- make the refire slower to avoid immediately dropping
+            local delay = (ent:GetClass() == "prop_ragdoll") and 0.8 or 0.5
 
-               -- pull heavy stuff
-               local ent = trace.Entity
-               local phys = ent:GetPhysicsObject()
-               local pdir = trace.Normal * -1
+            self:SetNextSecondaryFire(CurTime() + delay)
+            return
+         else
+            local is_ragdoll = ent:GetClass() == "prop_ragdoll"
 
-               if is_ragdoll then
+            -- pull heavy stuff
+            local pdir = trace.Normal * -1
 
-                  phys = ent:GetPhysicsObjectNum(trace.PhysicsBone)
+            if is_ragdoll then
 
-                  -- increase refire to make rags easier to drag
-                  --self.Weapon:SetNextSecondaryFire(CurTime() + 0.04)
-               end
+               phys = ent:GetPhysicsObjectNum(trace.PhysicsBone)
 
-               if IsValid(phys) then
-                  self:MoveObject(phys, pdir, 6000, is_ragdoll)
-                  return
-               end
+               -- increase refire to make rags easier to drag
+               --self:SetNextSecondaryFire(CurTime() + 0.04)
             end
-         end
-      else
-         if (ply:EyePos() - trace.HitPos):Length() < 100 then
-            local phys = trace.Entity:GetPhysicsObject()
+
             if IsValid(phys) then
-               if IsValid(phys) then
-                  local pdir = trace.Normal
-                  self:MoveObject(phys, pdir, 6000, (trace.Entity:GetClass() == "prop_ragdoll"))
-
-                  self.Weapon:SetNextPrimaryFire(CurTime() + 0.03)
-               end
+               self:MoveObject(phys, pdir, 6000, is_ragdoll)
+               return
             end
          end
       end
+   elseif (ply:EyePos() - trace.HitPos):Length() < 100 then
+      local pdir = trace.Normal
+      self:MoveObject(phys, pdir, 6000, (ent:GetClass() == "prop_ragdoll"))
+
+      self:SetNextPrimaryFire(CurTime() + 0.03)
    end
 end
 
@@ -347,7 +336,7 @@ end
 function SWEP:Pickup()
    if CLIENT or IsValid(self.EntHolding) then return end
 
-   local ply = self.Owner
+   local ply = self:GetOwner()
    local trace = ply:GetEyeTrace(MASK_SHOT)
    local ent = trace.Entity
    self.EntHolding = ent
@@ -370,9 +359,9 @@ function SWEP:Pickup()
          self.CarryHack:SetOwner(ply)
          self.CarryHack:SetCollisionGroup(COLLISION_GROUP_DEBRIS)
          self.CarryHack:SetSolid(SOLID_NONE)
-         
+
          -- set the desired angles before adding the constraint
-         self.CarryHack:SetAngles(self.Owner:GetAngles())
+         self.CarryHack:SetAngles(self:GetOwner():GetAngles())
 
          self.CarryHack:Spawn()
 
@@ -417,7 +406,7 @@ end
 
 local down = Vector(0, 0, -1)
 function SWEP:AllowEntityDrop()
-   local ply = self.Owner
+   local ply = self:GetOwner()
    local ent = self.CarryHack
    if (not IsValid(ply)) or (not IsValid(ent)) then return false end
 
@@ -446,7 +435,7 @@ function SWEP:Drop()
          phys:EnableDrag(true)
          phys:EnableMotion(true)
          phys:Wake()
-         phys:ApplyForceCenter(self.Owner:GetAimVector() * 500)
+         phys:ApplyForceCenter(self:GetOwner():GetAimVector() * 500)
 
          phys:ClearGameFlag(FVPHYSICS_PLAYER_HELD)
          phys:AddGameFlag(FVPHYSICS_WAS_THROWN)
@@ -457,7 +446,7 @@ function SWEP:Drop()
          KillVelocity(ent)
       end
 
-      ent:SetPhysicsAttacker(self.Owner)
+      ent:SetPhysicsAttacker(self:GetOwner())
 
    end
 
@@ -480,10 +469,10 @@ end
 
 function SWEP:PinRagdoll()
    if not pin_rag:GetBool() then return end
-   if (not self.Owner:IsTraitor()) and (not pin_rag_inno:GetBool()) then return end
+   if (not self:GetOwner():IsTraitor()) and (not pin_rag_inno:GetBool()) then return end
 
    local rag = self.EntHolding
-   local ply = self.Owner
+   local ply = self:GetOwner()
 
    local tr = util.TraceLine({start  = ply:EyePos(),
                               endpos = ply:EyePos() + (ply:GetAimVector() * PIN_RAG_RANGE),
@@ -531,6 +520,7 @@ function SWEP:SetupDataTables()
    -- we've got these dt slots anyway, might as well use them instead of a
    -- globalvar, probably cheaper
    self:DTVar("Bool", 0, "can_rag_pin")
+   self:DTVar("Bool", 1, "can_rag_pin_inno")
 
    -- client actually has no idea what we're holding, and almost never needs to
    -- know
@@ -541,6 +531,7 @@ end
 if SERVER then
    function SWEP:Initialize()
       self.dt.can_rag_pin = pin_rag:GetBool()
+      self.dt.can_rag_pin_inno = pin_rag_inno:GetBool()
       self.dt.carried_rag = nil
 
       return self.BaseClass.Initialize(self)
@@ -579,16 +570,18 @@ if CLIENT then
    function SWEP:DrawHUD()
       self.BaseClass.DrawHUD(self)
 
-      if self.dt.can_rag_pin and IsValid(self.dt.carried_rag) and LocalPlayer():IsTraitor() then
+      if self.dt.can_rag_pin and IsValid(self.dt.carried_rag) then
          local client = LocalPlayer()
 
-         local tr = util.TraceLine({start  = client:EyePos(),
-                                    endpos = client:EyePos() + (client:GetAimVector() * PIN_RAG_RANGE),
-                                    filter = {client, self, self.dt.carried_rag},
-                                    mask   = MASK_SOLID})
+         if not client:IsSpec() and (self.dt.can_rag_pin_inno or client:IsTraitor()) then
+            local tr = util.TraceLine({start  = client:EyePos(),
+               endpos = client:EyePos() + (client:GetAimVector() * PIN_RAG_RANGE),
+               filter = {client, self, self.dt.carried_rag},
+               mask   = MASK_SOLID})
 
-         if tr.HitWorld and (not tr.HitSky) then
-            draw.SimpleText(PT("magnet_help", key_params), "TabLarge", ScrW() / 2, ScrH() / 2 - 50, COLOR_RED, TEXT_ALIGN_CENTER)
+            if tr.HitWorld and (not tr.HitSky) then
+               draw.SimpleText(PT("magnet_help", key_params), "TabLarge", ScrW() / 2, ScrH() / 2 - 50, COLOR_RED, TEXT_ALIGN_CENTER)
+            end
          end
       end
    end

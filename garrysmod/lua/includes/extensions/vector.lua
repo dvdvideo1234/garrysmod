@@ -1,6 +1,5 @@
-local meta = FindMetaTable( "Vector" )
 
--- Nothing in here, still leaving this file here just in case
+local meta = FindMetaTable( "Vector" )
 
 --[[---------------------------------------------------------
 Converts Vector to Color - alpha precision lost, must reset
@@ -23,6 +22,14 @@ Converts Vector to Array - removes all metrods from the copy
 -----------------------------------------------------------]]
 function meta:ToArray()
 	return { self:Unpack() }
+end
+
+--[[---------------------------------------------------------
+Converts a vector object to a color object
+-----------------------------------------------------------]]
+function meta:ToColor()
+	local x, y, z = meta.Unpack( self )
+	return Color( x * 255, y * 255, z * 255 )
 end
 
 --[[---------------------------------------------------------
@@ -256,6 +263,5 @@ function meta:AngleBetween( vec, nrm )
 	if ( nrm == nil ) then
 		return math.acos( self:Dot( vec ) / math.sqrt( self:LengthSqr() * vec:LengthSqr() ) )
 	end
-
 	return math.atan2( self:Determinant( vec, nrm:GetNormalized() ), self:Dot( vec ) )
 end

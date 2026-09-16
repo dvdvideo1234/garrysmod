@@ -1,42 +1,36 @@
 
-local hook 			= hook
-local HTTP 			= HTTP
-local pairs 		= pairs
-local table			= table
-local ErrorNoHalt	= ErrorNoHalt
+local HTTP = HTTP
 
 --[[---------------------------------------------------------
 	HTTP Module. Interaction with HTTP.
 -----------------------------------------------------------]]
-
 module( "http" )
 
 --[[---------------------------------------------------------
 
 	Get the contents of a webpage.
-	
-	Callback should be 
-	
+
+	Callback should be
+
 	function callback( (args optional), contents, size )
-	
+
 -----------------------------------------------------------]]
 function Fetch( url, onsuccess, onfailure, header )
 
-	local request = 
-	{
+	local request = {
 		url			= url,
 		method		= "get",
-		headers = header or {},
+		headers		= header or {},
 
-		success		= function( code, body, headers )
-	
+		success = function( code, body, headers )
+
 			if ( !onsuccess ) then return end
 
 			onsuccess( body, body:len(), headers, code )
 
 		end,
 
-		failed		= function( err )
+		failed = function( err )
 
 			if ( !onfailure ) then return end
 
@@ -45,29 +39,28 @@ function Fetch( url, onsuccess, onfailure, header )
 		end
 	}
 
-	HTTP( request )
+	local success = HTTP( request )
+	if ( !success && onfailure ) then onfailure( "HTTP failed" ) end
 
 end
 
-
 function Post( url, params, onsuccess, onfailure, header )
 
-	local request = 
-	{
+	local request = {
 		url			= url,
 		method		= "post",
 		parameters	= params,
-		headers = header or {},
+		headers		= header or {},
 
-		success		= function( code, body, headers )
-	
+		success = function( code, body, headers )
+
 			if ( !onsuccess ) then return end
 
 			onsuccess( body, body:len(), headers, code )
 
 		end,
 
-		failed		= function( err )
+		failed = function( err )
 
 			if ( !onfailure ) then return end
 
@@ -76,7 +69,8 @@ function Post( url, params, onsuccess, onfailure, header )
 		end
 	}
 
-	HTTP( request )
+	local success = HTTP( request )
+	if ( !success && onfailure ) then onfailure( "HTTP failed" ) end
 
 end
 
@@ -84,20 +78,17 @@ end
 
 Or use HTTP( table )
 
-local request = 
-{
+local request = {
 	url			= "http://pastebin.com/raw.php?i=3jsf50nL",
-
 	method		= "post",
 
-	parameters  = 
-	{
-			id			=	"548",
-			country		=	"England"
+	parameters = {
+		id			= "548",
+		country		= "England"
 	}
 
-	success		= function( code, body, headers )
-	
+	success = function( code, body, headers )
+
 		Msg( "Request Successful\n" )
 		Msg( "Code: ", code, "\n" )
 		Msg( "Body Length:\n", body:len(), "\n" )
@@ -106,11 +97,11 @@ local request =
 
 	end,
 
-	failed		= function( reason )
+	failed = function( reason )
 		Msg( "Request failed: ", reason, "\n" )
 	end
 }
 
 HTTP( request )
 
----]]
+--]]

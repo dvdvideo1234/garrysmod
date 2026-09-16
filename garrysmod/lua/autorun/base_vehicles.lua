@@ -10,14 +10,14 @@ local Category = "Half-Life 2"
 
 AddVehicle( {
 	-- Required information
-	Name = "Jeep",
+	Name = "#spawnmenu.vehicle.jeep",
 	Model = "models/buggy.mdl",
 	Class = "prop_vehicle_jeep_old",
 	Category = Category,
 
 	-- Optional information
 	Author = "VALVe",
-	Information = "The regular old jeep",
+	Information = "The regular old jeep from Half-Life 2 coasts",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/jeep_test.txt"
@@ -25,13 +25,13 @@ AddVehicle( {
 }, "Jeep" )
 
 AddVehicle( {
-	Name = "Airboat",
+	Name = "#spawnmenu.vehicle.airboat",
 	Model = "models/airboat.mdl",
 	Class = "prop_vehicle_airboat",
 	Category = Category,
 
 	Author = "VALVe",
-	Information = "Airboat from Half-Life 2",
+	Information = "Airboat from Half-Life 2 canals",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/airboat.txt"
@@ -39,13 +39,13 @@ AddVehicle( {
 }, "Airboat" )
 
 AddVehicle( {
-	Name = "Pod",
+	Name = "#spawnmenu.vehicle.prisoner_pod",
 	Model = "models/vehicles/prisoner_pod_inner.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
 
 	Author = "VALVe",
-	Information = "The Prisoner Pod",
+	Information = "The prisoner pod from Half-Life 2 citadel",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
@@ -53,36 +53,52 @@ AddVehicle( {
 	}
 }, "Pod" )
 
-if ( IsMounted( "ep2" ) ) then 
-	AddVehicle( {
-		Name = "Jalopy",
-		Model = "models/vehicle.mdl",
-		Class = "prop_vehicle_jeep",
-		Category = Category,
+AddVehicle( {
+	Name = "#spawnmenu.vehicle.jalopy",
+	Model = "models/vehicle.mdl",
+	Class = "prop_vehicle_jeep",
+	Category = Category,
 
-		Author = "VALVe",
-		Information = "The muscle car from Episode 2",
+	Author = "VALVe",
+	Information = "The muscle car from Half-Life 2: Episode 2",
 
-		KeyValues = {
-			vehiclescript = "scripts/vehicles/jalopy.txt"
-		}
-	}, "Jalopy" )
-end
+	KeyValues = {
+		vehiclescript = "scripts/vehicles/jalopy.txt"
+	}
+}, "Jalopy" )
 
-local Category = "Chairs"
+AddVehicle( {
+	Name = "#prop_vehicle_apc",
+	Model = "models/combine_apc.mdl",
+	Class = "prop_vehicle_apc",
+	Health = 0, -- Indestructible
+	Category = Category,
+
+	Author = "VALVe",
+	Information = "The Combine Armored Personnel Carrier from Half-Life 2",
+
+	KeyValues = {
+		vehiclescript = "scripts/vehicles/apc_gmod.txt"
+	}
+}, "prop_vehicle_apc" )
+
+
+
+
+Category = "#spawnmenu.category.chairs"
 
 local function HandleRollercoasterAnimation( vehicle, player )
-	return player:SelectWeightedSequence( ACT_GMOD_SIT_ROLLERCOASTER ) 
+	return player:SelectWeightedSequence( ACT_GMOD_SIT_ROLLERCOASTER )
 end
 
 AddVehicle( {
-	Name = "Wooden Chair",
+	Name = "#spawnmenu.chair.wooden",
 	Model = "models/nova/chair_wood01.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
 
 	Author = "VALVe",
-	Information = "A Wooden Chair",
+	Information = "A wooden chair",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
@@ -94,13 +110,13 @@ AddVehicle( {
 }, "Chair_Wood" )
 
 AddVehicle( {
-	Name = "Chair",
+	Name = "#spawnmenu.chair.plastic",
 	Model = "models/nova/chair_plastic01.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
 
 	Author = "VALVe",
-	Information = "A Plastic Chair",
+	Information = "A plastic chair",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
@@ -112,49 +128,13 @@ AddVehicle( {
 }, "Chair_Plastic" )
 
 AddVehicle( {
-	Name = "Jeep Seat",
-	Model = "models/nova/jeep_seat.mdl",
-	Class = "prop_vehicle_prisoner_pod",
-	Category = Category,
-
-	Author = "VALVe",
-	Information = "A Seat from VALVe's Jeep",
-
-	KeyValues = {
-		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
-		limitview = "0"
-	},
-	Members = {
-		HandleAnimation = HandleRollercoasterAnimation,
-	}
-}, "Seat_Jeep" )
-
-AddVehicle( {
-	Name = "Airboat Seat",
-	Model = "models/nova/airboat_seat.mdl",
-	Class = "prop_vehicle_prisoner_pod",
-	Category = Category,
-
-	Author = "VALVe",
-	Information = "A Seat from VALVe's Airboat",
-
-	KeyValues = {
-		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
-		limitview = "0"
-	},
-	Members = {
-		HandleAnimation = HandleRollercoasterAnimation,
-	}
-}, "Seat_Airboat" )
-
-AddVehicle( {
-	Name = "Office Chair",
+	Name = "#spawnmenu.chair.office",
 	Model = "models/nova/chair_office01.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
 
 	Author = "VALVe",
-	Information = "A Small Office Chair",
+	Information = "A small office chair",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
@@ -166,13 +146,13 @@ AddVehicle( {
 }, "Chair_Office1" )
 
 AddVehicle( {
-	Name = "Big Office Chair",
+	Name = "#spawnmenu.chair.office_big",
 	Model = "models/nova/chair_office02.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
 
 	Author = "VALVe",
-	Information = "A Big Office Chair",
+	Information = "A big office chair",
 
 	KeyValues = {
 		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
@@ -183,41 +163,74 @@ AddVehicle( {
 	}
 }, "Chair_Office2" )
 
-if ( IsMounted( "ep2" ) ) then 
-	AddVehicle( {
-		Name = "Jalopy Seat",
-		Model = "models/nova/jalopy_seat.mdl",
-		Class = "prop_vehicle_prisoner_pod",
-		Category = Category,
+AddVehicle( {
+	Name = "#spawnmenu.seat.jeep",
+	Model = "models/nova/jeep_seat.mdl",
+	Class = "prop_vehicle_prisoner_pod",
+	Category = Category,
 
-		Author = "VALVe",
-		Information = "A Seat from VALVe's Jalopy",
+	Author = "VALVe",
+	Information = "A seat from VALVe's Jeep",
 
-		KeyValues = {
-			vehiclescript = "scripts/vehicles/prisoner_pod.txt",
-			limitview = "0"
-		},
-		Members = {
-			HandleAnimation = HandleRollercoasterAnimation,
-		}
-	} , "Seat_Jalopy" )
-end
+	KeyValues = {
+		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
+		limitview = "0"
+	},
+	Members = {
+		HandleAnimation = HandleRollercoasterAnimation,
+	}
+}, "Seat_Jeep" )
+
+AddVehicle( {
+	Name = "#spawnmenu.seat.airboat",
+	Model = "models/nova/airboat_seat.mdl",
+	Class = "prop_vehicle_prisoner_pod",
+	Category = Category,
+
+	Author = "VALVe",
+	Information = "A seat from VALVe's Airboat",
+
+	KeyValues = {
+		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
+		limitview = "0"
+	},
+	Members = {
+		HandleAnimation = HandleRollercoasterAnimation,
+	}
+}, "Seat_Airboat" )
+
+AddVehicle( {
+	Name = "#spawnmenu.seat.jalopy",
+	Model = "models/nova/jalopy_seat.mdl",
+	Class = "prop_vehicle_prisoner_pod",
+	Category = Category,
+
+	Author = "VALVe",
+	Information = "A seat from VALVe's Jalopy",
+
+	KeyValues = {
+		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
+		limitview = "0"
+	},
+	Members = {
+		HandleAnimation = HandleRollercoasterAnimation,
+	}
+}, "Seat_Jalopy" )
 
 -- PhoeniX-Storms Vehicles
 
 local function HandlePHXSeatAnimation( vehicle, player )
-	return player:SelectWeightedSequence( ACT_HL2MP_SIT ) 
+	return player:SelectWeightedSequence( ACT_HL2MP_SIT )
 end
-
 local function HandlePHXVehicleAnimation( vehicle, ply )
-	return ply:SelectWeightedSequence( ACT_DRIVE_JEEP ) 
+	return ply:SelectWeightedSequence( ACT_DRIVE_JEEP )
 end
 local function HandlePHXAirboatAnimation( vehicle, ply )
-	return ply:SelectWeightedSequence( ACT_DRIVE_AIRBOAT ) 
+	return ply:SelectWeightedSequence( ACT_DRIVE_AIRBOAT )
 end
 
 AddVehicle( {
-	Name = "Car Seat",
+	Name = "#spawnmenu.seat.simple_sit",
 	Model = "models/props_phx/carseat2.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
@@ -236,7 +249,7 @@ AddVehicle( {
 }, "phx_seat" )
 
 AddVehicle( {
-	Name = "Car Seat 2",
+	Name = "#spawnmenu.seat.simple_jeep",
 	Model = "models/props_phx/carseat3.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
@@ -255,7 +268,7 @@ AddVehicle( {
 }, "phx_seat2" )
 
 AddVehicle( {
-	Name = "Car Seat 3",
+	Name = "#spawnmenu.seat.simple_airboat",
 	Model = "models/props_phx/carseat2.mdl",
 	Class = "prop_vehicle_prisoner_pod",
 	Category = Category,
@@ -272,22 +285,3 @@ AddVehicle( {
 		HandleAnimation = HandlePHXAirboatAnimation,
 	}
 }, "phx_seat3" )
-
--- Not adding this, because exit animation leaves you stuck in the middle
---[[AddVehicle( {
-	Name = "FSD Overrun",
-	Model = "models/props_phx/trains/fsd-overrun2.mdl",
-	Class = "prop_vehicle_prisoner_pod",
-	Category = Category,
-
-	Author = "PhoeniX-Storms",
-	Information = "FSD Overrun Monorail",
-
-	KeyValues = {
-		vehiclescript = "scripts/vehicles/prisoner_pod.txt",
-		limitview = "0"
-	},
-	Members = {
-		HandleAnimation = HandlePHXVehicleAnimation,
-	}
-}, "phx_train" )]]

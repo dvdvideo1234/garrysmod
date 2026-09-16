@@ -5,12 +5,32 @@ AccessorFunc( PANEL, "m_numMin",		"Min" )
 AccessorFunc( PANEL, "m_numMax",		"Max" )
 AccessorFunc( PANEL, "m_iDecimals",		"Decimals" ) -- The number of decimal places in the output
 AccessorFunc( PANEL, "m_fFloatValue",	"FloatValue" )
+AccessorFunc( PANEL, "m_iInterval",		"Interval" )
+
+-- AnchorValue and UnAnchorValue functions are internally used for "drag-changing" the value
+local function AnchorValue( wang, button, mcode )
+
+	button:OldOnMousePressed( mcode )
+	wang.mouseAnchor = gui.MouseY()
+	wang.valAnchor = wang:GetValue()
+
+end
+
+local function UnAnchorValue( wang, button, mcode )
+
+	button:OldOnMouseReleased( mcode )
+	wang.mouseAnchor = nil
+	wang.valAnchor = nil
+
+end
 
 function PANEL:Init()
 
 	self:SetDecimals( 2 )
 	self:SetTall( 20 )
 	self:SetMinMax( 0, 100 )
+
+	self:SetInterval( 1 )
 
 	self:SetUpdateOnType( true )
 	self:SetNumeric( true )
@@ -19,13 +39,25 @@ function PANEL:Init()
 
 	self.Up = vgui.Create( "DButton", self )
 	self.Up:SetText( "" )
-	self.Up.DoClick = function( button, mcode ) self:SetValue( self:GetValue() + 1 ) end
+	self.Up.DoClick = function( button, mcode ) self:SetValue( self:GetValue() + self:GetInterval() ) end
 	self.Up.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "NumberUp", panel, w, h ) end
+
+	self.Up.OldOnMousePressed = self.Up.OnMousePressed
+	self.Up.OldOnMouseReleased = self.Up.OnMouseReleased
+	self.Up.OnMousePressed = function( button, mcode ) AnchorValue( self, button, mcode ) end
+	self.Up.OnMouseReleased = function( button, mcode ) UnAnchorValue( self, button, mcode ) end
+	self.Up.OnMouseWheeled = function( button, delta ) self:SetValue( self:GetValue() + delta ) end
 
 	self.Down = vgui.Create( "DButton", self )
 	self.Down:SetText( "" )
-	self.Down.DoClick = function( button, mcode ) self:SetValue( self:GetValue() - 1 ) end
+	self.Down.DoClick = function( button, mcode ) self:SetValue( self:GetValue() - self:GetInterval() ) end
 	self.Down.Paint = function( panel, w, h ) derma.SkinHook( "Paint", "NumberDown", panel, w, h ) end
+
+	self.Down.OldOnMousePressed = self.Down.OnMousePressed
+	self.Down.OldOnMouseReleased = self.Down.OnMouseReleased
+	self.Down.OnMousePressed = function( button, mcode ) AnchorValue( self, button, mcode ) end
+	self.Down.OnMouseReleased = function( button, mcode ) UnAnchorValue( self, button, mcode ) end
+	self.Down.OnMouseWheeled = function( button, delta ) self:SetValue( self:GetValue() + delta ) end
 
 	self:SetValue( 0 )
 
@@ -38,19 +70,18 @@ function PANEL:HideWang()
 
 end
 
+function PANEL:Think()
+
+	if ( self.mouseAnchor ) then
+		self:SetValue( self.valAnchor + self.mouseAnchor - gui.MouseY() )
+	end
+
+end
+
 function PANEL:SetDecimals( num )
 
 	self.m_iDecimals = num
 	self:SetValue( self:GetValue() )
-
-end
-
-function PANEL:OnMouseReleased( mousecode )
-
-	if ( self.Dragging ) then
-		self:EndWang()
-		return
-	end
 
 end
 
@@ -85,7 +116,6 @@ function PANEL:SetValue( val )
 
 	if ( val == nil ) then return end
 
-	local OldValue = val
 	val = tonumber( val )
 	val = val or 0
 
@@ -97,30 +127,39 @@ function PANEL:SetValue( val )
 		val = math.max( self.m_numMin, val )
 	end
 
+	local valText
 	if ( self.m_iDecimals == 0 ) then
 
-		val = Format( "%i", val )
+		valText = Format( "%i", val )
 
 	elseif ( val != 0 ) then
 
-		val = Format( "%." .. self.m_iDecimals .. "f", val )
+		valText = Format( "%." .. self.m_iDecimals .. "f", val )
 
 		-- Trim trailing 0's and .'s 0 this gets rid of .00 etc
-		val = string.TrimRight( val, "0" )
-		val = string.TrimRight( val, "." )
+		valText = string.TrimRight( valText, "0" )
+		valText = string.TrimRight( valText, "." )
+
+	else
+
+		valText = tostring( val )
 
 	end
+
+	local hasChanged = tonumber( val ) != tonumber( self:GetValue() )
 
 	--
 	-- Don't change the value while we're typing into it!
 	-- It causes confusion!
 	--
 	if ( !self:HasFocus() ) then
-		self:SetText( val )
-		self:ConVarChanged( val )
+		self:SetText( valText )
+		self:ConVarChanged( valText )
 	end
 
-	self:OnValueChanged( val )
+	if ( hasChanged ) then
+		self:OnValueChanged( val )
+	end
 
 end
 
@@ -162,7 +201,7 @@ function PANEL:SizeToContents()
 
 	if ( self:GetDecimals() && self:GetDecimals() > 0 ) then
 
-		chars = chars + 1 -- .
+		chars = chars + 1
 		chars = chars + self:GetDecimals()
 
 	end
@@ -184,7 +223,7 @@ end
 
 function PANEL:SetFraction( val )
 
-	local Fraction = self.m_numMin + ( (self.m_numMax - self.m_numMin) * val )
+	local Fraction = self.m_numMin + ( ( self.m_numMax - self.m_numMin ) * val )
 	self:SetValue( Fraction )
 
 end

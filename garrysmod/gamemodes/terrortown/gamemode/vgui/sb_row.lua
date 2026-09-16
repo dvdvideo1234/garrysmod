@@ -4,8 +4,19 @@ include("sb_info.lua")
 
 
 local GetTranslation = LANG.GetTranslation
-local GetPTranslation = LANG.GetParamTranslation
 
+local ttt_highlight_admins = CreateConVar("ttt_highlight_admins", "1", FCVAR_REPLICATED)
+
+local OpenedVoicePanels = {}
+local function HideVolumePanels()
+   for _, pnl in pairs(OpenedVoicePanels) do
+      if IsValid(pnl) then
+         pnl:Close()
+         pnl = nil
+      end
+   end
+end
+hook.Add("ScoreboardHide", "TTT_HideVolumePanels", HideVolumePanels)
 
 SB_ROW_HEIGHT = 24 --16
 
@@ -22,9 +33,8 @@ function PANEL:Init()
    self:AddColumn( GetTranslation("sb_deaths"), function(ply) return ply:Deaths() end )
    self:AddColumn( GetTranslation("sb_score"), function(ply) return ply:Frags() end )
 
-   if KARMA.IsEnabled() then
-      self:AddColumn( GetTranslation("sb_karma"), function(ply) return math.Round(ply:GetBaseKarma()) end )
-   end
+   local kc = self:AddColumn( GetTranslation("sb_karma"), function(ply) return math.Round(ply:GetBaseKarma()) end )
+   kc.ShouldShow = KARMA.IsEnabled
 
    -- Let hooks add their custom columns
    hook.Call("TTTScoreboardColumns", nil, self)
@@ -88,7 +98,7 @@ function GM:TTTScoreboardColorForPlayer(ply)
 
    if ply:SteamID() == "STEAM_0:0:1963640" then
       return namecolor.dev
-   elseif ply:IsAdmin() and GetGlobalBool("ttt_highlight_admins", true) then
+   elseif ply:IsAdmin() and ttt_highlight_admins:GetBool() then
       return namecolor.admin
    end
    return namecolor.default
@@ -111,7 +121,7 @@ local function ColorForPlayer(ply)
       local c = hook.Call("TTTScoreboardColorForPlayer", GAMEMODE, ply)
 
       -- verify that we got a proper color
-      if c and type(c) == "table" and c.r and c.b and c.g and c.a then
+      if c and istable(c) and c.r and c.b and c.g and c.a then
          return c
       else
          ErrorNoHalt("TTTScoreboardColorForPlayer hook returned something that isn't a color!\n")
@@ -170,6 +180,14 @@ function PANEL:SetPlayer(ply)
                               ply:SetMuted(not ply:IsMuted())
                            end
                         end
+
+   self.voice.DoRightClick = function()
+      if IsValid(ply) and ply != LocalPlayer() then
+         HideVolumePanels()
+         local voiceSlider = self:ShowMicVolumeSlider()
+         table.insert(OpenedVoicePanels, voiceSlider)
+      end
+   end
 
    self:UpdatePlayerData()
 end
@@ -243,6 +261,10 @@ function PANEL:LayoutColumns()
       v:SizeToContents()
       cx = cx - v.Width
       v:SetPos(cx - v:GetWide()/2, (SB_ROW_HEIGHT - v:GetTall()) / 2)
+
+      if v.ShouldShow then
+         v:SetVisible(v:ShouldShow())
+      end
    end
 
    self.tag:SizeToContents()
@@ -312,6 +334,101 @@ function PANEL:DoRightClick()
    if close then menu:Remove() return end
 
    menu:Open()
+end
+
+function PANEL:ShowMicVolumeSlider()
+   local width = 300
+   local height = 50
+   local padding = 10
+
+   local sliderHeight = 16
+   local sliderDisplayHeight = 8
+
+   local x = math.max(gui.MouseX() - width - padding, 0)
+   local y = math.min(gui.MouseY(), ScrH() - height)
+
+   local currentPlayerVolume = self:GetPlayer():GetVoiceVolumeScale()
+   currentPlayerVolume = currentPlayerVolume != nil and currentPlayerVolume or 1
+
+
+   -- Frame for the slider
+   local frame = vgui.Create("DFrame")
+   frame:SetPos(x, y)
+   frame:SetSize(width, height)
+   frame:MakePopup()
+   frame:SetTitle("")
+   frame:ShowCloseButton(false)
+   frame:SetDraggable(false)
+   frame:SetSizable(false)
+   frame.Paint = function(self, w, h)
+      draw.RoundedBox(5, 0, 0, w, h, Color(24, 25, 28, 255))
+   end
+   frame.Player = self:GetPlayer()
+
+   -- Automatically close after 10 seconds (something may have gone wrong)
+   timer.Simple(10, function() if IsValid(frame) then frame:Close() end end)
+
+
+   -- "Player volume"
+   local label = vgui.Create("DLabel", frame)
+   label:SetPos(padding, padding)
+   label:SetFont("cool_small")
+   label:SetSize(width - padding * 2, 20)
+   label:SetColor(Color(255, 255, 255, 255))
+   label:SetText(LANG.GetTranslation("sb_playervolume"))
+
+
+   -- Slider
+   local slider = vgui.Create("DSlider", frame)
+   slider:SetHeight(sliderHeight)
+   slider:Dock(TOP)
+   slider:DockMargin(padding, 0, padding, 0)
+   slider:SetSlideX(currentPlayerVolume)
+   slider:SetLockY(0.5)
+   slider.TranslateValues = function(slider, x, y)
+      if IsValid(frame.Player) then frame.Player:SetVoiceVolumeScale(x) end
+      return x, y
+   end
+
+   -- Close the slider panel once the player has selected a volume
+   slider.OnMouseReleased = function(panel, mcode) frame:Close() end
+   slider.Knob.OnMouseReleased = function(panel, mcode) frame:Close() end
+
+
+   -- Slider rendering
+   -- Render slider bar
+   slider.Paint = function(self, w, h)
+      local volumePercent = slider:GetSlideX()
+
+      -- Filled in box
+      draw.RoundedBox(5, 0, sliderDisplayHeight / 2, w * volumePercent, sliderDisplayHeight, Color(200, 46, 46, 255))
+
+      -- Grey box
+      draw.RoundedBox(5, w * volumePercent, sliderDisplayHeight / 2, w * (1 - volumePercent), sliderDisplayHeight, Color(79, 84, 92, 255))
+   end
+
+   -- Render slider "knob" & text
+   slider.Knob.Paint = function(self, w, h)
+      if slider:IsEditing() then
+         local textValue = math.Round(slider:GetSlideX() * 100) .. "%"
+         local textPadding = 5
+
+         -- The position of the text and size of rounded box are not relative to the text size. May cause problems if font size changes
+         draw.RoundedBox(
+            5, -- Radius
+            -sliderHeight * 0.5 - textPadding, -- X
+            -25, -- Y
+            sliderHeight * 2 + textPadding * 2, -- Width
+            sliderHeight + textPadding * 2, -- Height
+            Color(52, 54, 57, 255)
+         )
+         draw.DrawText(textValue, "cool_small", sliderHeight / 2, -20, Color(255, 255, 255, 255), TEXT_ALIGN_CENTER)
+      end
+
+      draw.RoundedBox(100, 0, 0, sliderHeight, sliderHeight, Color(255, 255, 255, 255))
+   end
+
+   return frame
 end
 
 vgui.Register( "TTTScorePlayerRow", PANEL, "DButton" )

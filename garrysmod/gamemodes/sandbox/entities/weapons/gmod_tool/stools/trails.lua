@@ -36,19 +36,26 @@ local function SetTrails( ply, ent, data )
 
 	end
 
-	if ( data.StartSize == 0 ) then
+	-- Just don't even bother with invisible trails
+	if ( data.StartSize <= 0 && data.EndSize <= 0 ) then return end
 
-		data.StartSize = 0.0001
+		-- This is here to fix crash exploits
+	if ( !game.SinglePlayer() ) then
+
+		-- Lock down the trail material - only allow what the server allows
+		if ( !list.Contains( "trail_materials", data.Material ) ) then return end
+
+		-- Clamp sizes in multiplayer
+		data.Length = math.Clamp( data.Length, 0.1, 10 )
+		data.EndSize = math.Clamp( data.EndSize, 0, 128 )
+		data.StartSize = math.Clamp( data.StartSize, 0, 128 )
 
 	end
 
-	--
-	-- Lock down the trail material - only allow what the server allows
-	-- This is here to fix a crash exploit
-	--
-	if ( !game.SinglePlayer() && !list.Contains( "trail_materials", data.Material ) ) then return end
+	data.StartSize = math.max( 0.0001, data.StartSize )
 
 	local trail_entity = util.SpriteTrail( ent, 0, data.Color, false, data.StartSize, data.EndSize, data.Length, 1 / ( ( data.StartSize + data.EndSize ) * 0.5 ), data.Material .. ".vmt" )
+	if ( !IsValid( trail_entity ) ) then return end
 
 	ent.SToolTrail = trail_entity
 
@@ -61,12 +68,13 @@ local function SetTrails( ply, ent, data )
 	return trail_entity
 
 end
-duplicator.RegisterEntityModifier( "trail", SetTrails )
+if ( SERVER ) then
+	duplicator.RegisterEntityModifier( "trail", SetTrails )
+end
 
 function TOOL:LeftClick( trace )
 
 	if ( !IsValid( trace.Entity ) ) then return false end
-	if ( !trace.Entity:EntIndex() == 0 ) then return false end
 	if ( trace.Entity:IsPlayer() ) then return false end
 	if ( CLIENT ) then return true end
 
@@ -78,18 +86,9 @@ function TOOL:LeftClick( trace )
 	local length = self:GetClientNumber( "length", 5 )
 	local endsize = self:GetClientNumber( "endsize", 0 )
 	local startsize = self:GetClientNumber( "startsize", 32 )
-	local mat = self:GetClientInfo( "material", "sprites/obsolete" )
+	local mat = self:GetClientInfo( "material" )
 
-	-- Clamp sizes in multiplayer
-	if ( !game.SinglePlayer() ) then
-
-		length = math.Clamp( length, 0.1, 10 )
-		endsize = math.Clamp( endsize, 0, 128 )
-		startsize = math.Clamp( startsize, 0, 128 )
-
-	end
-
-	local Trail = SetTrails( self:GetOwner(), trace.Entity, {
+	local trail = SetTrails( self:GetOwner(), trace.Entity, {
 		Color = Color( r, g, b, a ),
 		Length = length,
 		StartSize = startsize,
@@ -97,10 +96,13 @@ function TOOL:LeftClick( trace )
 		Material = mat
 	} )
 
+	if ( !IsValid( trail ) ) then return false end
+
 	undo.Create( "Trail" )
-		undo.AddEntity( Trail )
+		undo.AddEntity( trail )
 		undo.SetPlayer( self:GetOwner() )
-	undo.Finish()
+		undo.SetCustomUndoText( "Undone #tool.trails.name" )
+	undo.Finish( "#tool.trails.name" )
 
 	return true
 
@@ -109,7 +111,6 @@ end
 function TOOL:RightClick( trace )
 
 	if ( !IsValid( trace.Entity ) ) then return false end
-	if ( !trace.Entity:EntIndex() == 0 ) then return false end
 	if ( trace.Entity:IsPlayer() ) then return false end
 	if ( CLIENT ) then return true end
 
@@ -147,15 +148,14 @@ local ConVarsDefault = TOOL:BuildConVarList()
 
 function TOOL.BuildCPanel( CPanel )
 
-	CPanel:AddControl( "Header", { Description = "#tool.trails.desc" } )
+	CPanel:Help( "#tool.trails.desc" )
+	CPanel:ToolPresets( "trails", ConVarsDefault )
 
-	CPanel:AddControl( "ComboBox", { MenuButton = 1, Folder = "trails", Options = { [ "#preset.default" ] = ConVarsDefault }, CVars = table.GetKeys( ConVarsDefault ) } )
+	CPanel:ColorPicker( "#tool.trails.color", "trails_r", "trails_g", "trails_b", "trails_a" )
 
-	CPanel:AddControl( "Color", { Label = "#tool.trails.color", Red = "trails_r", Green = "trails_g", Blue = "trails_b", Alpha = "trails_a" } )
-
-	CPanel:NumSlider( "#tool.trails.length", "trails_length", 0, 10, 2 )
-	CPanel:NumSlider( "#tool.trails.startsize", "trails_startsize", 0, 128, 2 )
-	CPanel:NumSlider( "#tool.trails.endsize", "trails_endsize", 0, 128, 2 )
+	CPanel:NumSlider( "#tool.trails.length", "trails_length", 0, 10 )
+	CPanel:NumSlider( "#tool.trails.startsize", "trails_startsize", 0, 128 )
+	CPanel:NumSlider( "#tool.trails.endsize", "trails_endsize", 0, 128 )
 
 	CPanel:MatSelect( "trails_material", list.Get( "trail_materials" ), true, 0.25, 0.25 )
 

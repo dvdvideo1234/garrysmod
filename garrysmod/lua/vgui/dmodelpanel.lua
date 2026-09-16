@@ -31,7 +31,7 @@ function PANEL:Init()
 	self:SetDirectionalLight( BOX_TOP, Color( 255, 255, 255 ) )
 	self:SetDirectionalLight( BOX_FRONT, Color( 255, 255, 255 ) )
 
-	self:SetColor( Color( 255, 255, 255, 255 ) )
+	self:SetColor( color_white )
 
 end
 
@@ -76,22 +76,12 @@ end
 
 function PANEL:DrawModel()
 
-	local curparent = self
-	local rightx = self:GetWide()
-	local leftx = 0
-	local topy = 0
-	local bottomy = self:GetTall()
-	local previous = curparent
-	while( curparent:GetParent() != nil ) do
-		curparent = curparent:GetParent()
-		local x, y = previous:GetPos()
-		topy = math.Max( y, topy + y )
-		leftx = math.Max( x, leftx + x )
-		bottomy = math.Min( y + previous:GetTall(), bottomy + y )
-		rightx = math.Min( x + previous:GetWide(), rightx + x )
-		previous = curparent
-	end
-	render.SetScissorRect( leftx, topy, rightx, bottomy, true )
+	-- Get the panel's scissor rect, and apply it to model render
+	local enabled, leftx, topy, rightx, bottomy = surface.GetScissorRect()
+
+	render.ClearDepth( false )
+
+	render.SetScissorRect( leftx, topy, rightx, bottomy, enabled )
 
 	local ret = self:PreDrawModel( self.Entity )
 	if ( ret != false ) then
@@ -130,9 +120,9 @@ function PANEL:Paint( w, h )
 	render.SetLightingOrigin( self.Entity:GetPos() )
 	render.ResetModelLighting( self.colAmbientLight.r / 255, self.colAmbientLight.g / 255, self.colAmbientLight.b / 255 )
 	render.SetColorModulation( self.colColor.r / 255, self.colColor.g / 255, self.colColor.b / 255 )
-	render.SetBlend( ( self:GetAlpha() / 255 ) * ( self.colColor.a / 255 ) )
+	render.SetBlend( ( self:GetAlpha() / 255 ) * ( self.colColor.a / 255 ) ) -- * surface.GetAlphaMultiplier()
 
-	for i = 0, 6 do
+	for i = 0, 5 do
 		local col = self.DirectionalLight[ i ]
 		if ( col ) then
 			render.SetModelLighting( i, col.r / 255, col.g / 255, col.b / 255 )
@@ -149,7 +139,7 @@ function PANEL:Paint( w, h )
 end
 
 function PANEL:RunAnimation()
-	self.Entity:FrameAdvance( ( RealTime() - self.LastPaint ) * self.m_fAnimSpeed )
+	self.Entity:FrameAdvance( --[[( RealTime() - self.LastPaint ) * self.m_fAnimSpeed]] )
 end
 
 function PANEL:StartScene( name )

@@ -7,63 +7,94 @@
 
 local Errors = {}
 
+hook.Add( "OnLuaError", "MenuErrorHandler", function( str, realm, stack, addontitle, addonid )
 
-hook.Add( "OnLuaError", "MenuErrorHandler", function( str, realm, addontitle, addonid )
+	-- This error is caused by a specific workshop addon
+	--[[if ( isstring( addonid ) ) then
 
-	local text = "Something is creating script errors"
-
-	--
-	-- This error is caused by a specific addon
-	--
-	if ( isstring( addonid ) ) then
-
-		--
 		-- Down Vote
-		--
-		-- steamworks.Vote( addonid, false )
+		steamworks.Vote( addonid, false )
 
-		--
 		-- Disable Naughty Addon
-		--
-		--timer.Simple( 5, function()
-		--	MsgN( "Disabling addon '", addontitle, "' due to lua errors" )
-		--	steamworks.SetShouldMountAddon( addonid, false )
-		--	steamworks.ApplyAddons()
-		--end )
+		timer.Simple( 5, function()
+			MsgN( "Disabling addon '", addontitle, "' due to lua errors" )
+			steamworks.SetShouldMountAddon( addonid, false )
+			steamworks.ApplyAddons()
+		end )
 
-		text = "The addon \"" .. addontitle .. "\" is creating errors, check the console for details"
+	end]]
 
-	end
-
-	if  ( addonid == nil ) then addonid = 0 end
+	if ( addonid == nil ) then addonid = 0 end
 
 	if ( Errors[ addonid ] ) then
-
 		Errors[ addonid ].times	= Errors[ addonid ].times + 1
 		Errors[ addonid ].last	= SysTime()
 
 		return
 	end
 
-	local error =
-	{
+	local text = language.GetPhrase( "errors.something_p" )
+
+	-- We know the name, display it to the user
+	if ( isstring( addontitle ) ) then
+		text = language.FormatPhrase( "errors.addon_p", addontitle )
+	end
+
+	local error = {
 		first	= SysTime(),
 		last	= SysTime(),
 		times	= 1,
-		title	= addontitle,
+		--title	= addontitle,
 		x		= 32,
-		text	= text
+		text	= text,
+		iserr   = true
 	}
 
 	Errors[ addonid ] = error
 
 end )
 
+hook.Add( "OnPauseMenuBlockedTooManyTimes", "TellAboutShiftEsc", function()
+
+	Errors[ "internal_shift+esc" ] = {
+		first	= SysTime(),
+		last	= SysTime(),
+		times	= 1,
+		x		= 32,
+		text	= "#permission.main_menu_blocked",
+		iserr   = false
+	}
+
+end )
+
+hook.Add( "OnProblemReceived", "FireProblemNotification", function( problem )
+
+	-- Only for highest severity problems
+	if ( problem.severity != 2 ) then return end
+
+	-- Strip off everything after a new line
+	local shortdesc = string.match( problem.text, "([^\n]+)" ) or problem.text
+
+	Errors[ "internal_problem" ] = {
+		first	= SysTime(),
+		last	= SysTime(),
+		times	= 1,
+		x		= 32,
+		text	= language.FormatPhrase( "#errors.problem", shortdesc ),
+		iserr   = true
+	}
+
+end )
+
 local matAlert = Material( "icon16/error.png" )
+local matInfo = Material( "icon16/information.png" )
+
+local cl_drawhud = GetConVar( "cl_drawhud" )
 
 hook.Add( "DrawOverlay", "MenuDrawLuaErrors", function()
-	
-	if ( table.Count( Errors ) == 0 ) then return end
+
+	if ( table.IsEmpty( Errors ) ) then return end
+	if ( !cl_drawhud:GetBool() ) then return end
 
 	local idealy = 32
 	local height = 30
@@ -76,13 +107,16 @@ hook.Add( "DrawOverlay", "MenuDrawLuaErrors", function()
 		if ( v.y == nil ) then v.y = idealy end
 		if ( v.w == nil ) then v.w = surface.GetTextSize( v.text ) + 48 end
 
-		
 		draw.RoundedBox( 2, v.x + 2, v.y + 2, v.w, height, Color( 40, 40, 40, 255 ) )
 		draw.RoundedBox( 2, v.x, v.y, v.w, height, Color( 240, 240, 240, 255 ) )
 
 		if ( v.last > Recent ) then
 
-			draw.RoundedBox( 2, v.x, v.y, v.w, height, Color( 255, 200, 0, ( v.last - Recent ) * 510 ) )
+			if v.iserr then
+				draw.RoundedBox( 2, v.x, v.y, v.w, height, Color( 255, 200, 0, ( v.last - Recent ) * 510 ) )
+			else
+				draw.RoundedBox( 2, v.x, v.y, v.w, height, Color( 0, 200, 255, ( v.last - Recent ) * 510 ) )
+			end
 
 		end
 
@@ -91,7 +125,11 @@ hook.Add( "DrawOverlay", "MenuDrawLuaErrors", function()
 		surface.DrawText( v.text )
 
 		surface.SetDrawColor( 255, 255, 255, 150 + math.sin( v.y + SysTime() * 30 ) * 100 )
-		surface.SetMaterial( matAlert )
+		if ( v.iserr ) then
+			surface.SetMaterial( matAlert )
+		else
+			surface.SetMaterial( matInfo )
+		end
 		surface.DrawTexturedRect( v.x + 6, v.y + 6, 16, 16 )
 
 		v.y = idealy
@@ -99,7 +137,7 @@ hook.Add( "DrawOverlay", "MenuDrawLuaErrors", function()
 		idealy = idealy + 40
 
 		if ( v.last < EndTime ) then
-			Errors[k] = nil
+			Errors[ k ] = nil
 		end
 
 	end

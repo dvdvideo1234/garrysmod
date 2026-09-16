@@ -3,7 +3,7 @@
 local net = net
 local string = string
 local table = table
-local pairs = pairs
+local ipairs = ipairs
 local IsValid = IsValid
 
 -- NOTE: most uses of the Msg functions here have been moved to the LANG
@@ -47,7 +47,7 @@ end
 local function RoleChatMsg(sender, role, msg)
    net.Start("TTT_RoleChat")
       net.WriteUInt(role, 2)
-      net.WriteEntity(sender)
+      net.WritePlayer(sender)
       net.WriteString(msg)
    net.Send(GetRoleFilter(role))
 end
@@ -55,7 +55,7 @@ end
 
 -- Round start info popup
 function ShowRoundStartPopup()
-   for k, v in pairs(player.GetAll()) do
+   for k, v in player.Iterator() do
       if IsValid(v) and v:Team() == TEAM_TERROR and v:Alive() then
          v:ConCommand("ttt_cl_startpopup")
       end
@@ -64,7 +64,7 @@ end
 
 local function GetPlayerFilter(pred)
    local filter = {}
-   for k, v in pairs(player.GetAll()) do
+   for k, v in player.Iterator() do
       if IsValid(v) and pred(v) then
          table.insert(filter, v)
       end
@@ -93,28 +93,28 @@ CreateConVar("ttt_limit_spectator_chat", "1", FCVAR_ARCHIVE + FCVAR_NOTIFY)
 CreateConVar("ttt_limit_spectator_voice", "1", FCVAR_ARCHIVE + FCVAR_NOTIFY)
 
 function GM:PlayerCanSeePlayersChat(text, team_only, listener, speaker)
-	if (not IsValid(listener)) then return false end
-	if (not IsValid(speaker)) then
-		if isentity(speaker) then
-			return true
-		else
-			return false
-		end
-	end
+   if (not IsValid(listener)) then return false end
+   if (not IsValid(speaker)) then
+      if isentity(speaker) then
+         return true
+      else
+         return false
+      end
+   end
 
-	local sTeam = speaker:Team() == TEAM_SPEC
-	local lTeam = listener:Team() == TEAM_SPEC
+   local sTeam = speaker:Team() == TEAM_SPEC
+   local lTeam = listener:Team() == TEAM_SPEC
 
-	if (GetRoundState() != ROUND_ACTIVE) or   -- Round isn't active
-	(not GetConVar("ttt_limit_spectator_chat"):GetBool()) or   -- Spectators can chat freely
-	(not DetectiveMode()) or   -- Mumbling
-	(not sTeam and ((team_only and not speaker:IsSpecial()) or (not team_only))) or   -- If someone alive talks (and not a special role in teamchat's case)
-	(not sTeam and team_only and speaker:GetRole() == listener:GetRole()) or
-	(sTeam and lTeam) then   -- If the speaker and listener are spectators
-	   return true
-	end
+   if (GetRoundState() != ROUND_ACTIVE) or   -- Round isn't active
+   (not GetConVar("ttt_limit_spectator_chat"):GetBool()) or   -- Spectators can chat freely
+   (not DetectiveMode()) or   -- Mumbling
+   (not sTeam and ((team_only and not speaker:IsSpecial()) or (not team_only))) or   -- If someone alive talks (and not a special role in teamchat's case)
+   (not sTeam and team_only and speaker:GetRole() == listener:GetRole()) or
+   (sTeam and lTeam) then   -- If the speaker and listener are spectators
+      return true
+   end
 
-	return false
+   return false
 end
 
 local mumbles = {"mumble", "mm", "hmm", "hum", "mum", "mbm", "mble", "ham", "mammaries", "political situation", "mrmm", "hrm",
@@ -130,7 +130,7 @@ function GM:PlayerSay(ply, text, team_only)
       local team = ply:Team() == TEAM_SPEC
       if team and not DetectiveMode() then
          local filtered = {}
-         for k, v in pairs(string.Explode(" ", text)) do
+         for k, v in ipairs(string.Explode(" ", text)) do
             -- grab word characters and whitelisted interpunction
             -- necessary or leetspeek will be used (by trolls especially)
             local word, interp = string.match(v, "(%a*)([%.,;!%?]*)")
@@ -140,15 +140,15 @@ function GM:PlayerSay(ply, text, team_only)
          end
 
          -- make sure we have something to say
-         if table.Count(filtered) < 1 then
+         if table.IsEmpty(filtered) then
             table.insert(filtered, mumbles[math.random(1, #mumbles)])
          end
 
          table.insert(filtered, 1, "[MUMBLED]")
          return table.concat(filtered, " ")
       elseif team_only and not team and ply:IsSpecial() then
-	     RoleChatMsg(ply, ply:GetRole(), text)
-		 return ""
+         RoleChatMsg(ply, ply:GetRole(), text)
+         return ""
       end
    end
 
@@ -164,7 +164,7 @@ function MuteForRestart(state)
 end
 
 
-local loc_voice = CreateConVar("ttt_locational_voice", "0")
+local loc_voice = CreateConVar("ttt_locational_voice", "0", FCVAR_REPLICATED)
 
 -- Of course voice has to be limited as well
 function GM:PlayerCanHearPlayersVoice(listener, speaker)
@@ -235,6 +235,13 @@ local function TraitorGlobalVoice(ply, cmd, args)
 end
 concommand.Add("tvog", TraitorGlobalVoice)
 
+local MuteModes = {
+   [MUTE_NONE] = "mute_off",
+   [MUTE_TERROR] = "mute_living",
+   [MUTE_ALL] = "mute_all",
+   [MUTE_SPEC] = "mute_specs"
+}
+
 local function MuteTeam(ply, cmd, args)
    if not IsValid(ply) then return end
    if not (#args == 1 and tonumber(args[1])) then return end
@@ -246,13 +253,8 @@ local function MuteTeam(ply, cmd, args)
    local t = tonumber(args[1])
    ply.mute_team = t
 
-   if t == MUTE_ALL then
-      ply:ChatPrint("All muted.")
-   elseif t == MUTE_NONE or t == TEAM_UNASSIGNED or not team.Valid(t) then
-      ply:ChatPrint("None muted.")
-   else
-      ply:ChatPrint(team.GetName(t) .. " muted.")
-   end
+   -- remove all ifs
+   LANG.Msg(ply, MuteModes[t])
 end
 concommand.Add("ttt_mute_team", MuteTeam)
 
@@ -263,19 +265,24 @@ local LastWordContext = {
    [KILL_SUICIDE] = " *kills self*",
    [KILL_FALL] = " *SPLUT*",
    [KILL_BURN] = " *crackle*"
-};
+}
 
 local function LastWordsMsg(ply, words)
    -- only append "--" if there's no ending interpunction
-   local final = string.match(words, "[\\.\\!\\?]$") != nil
+   local final = string.match(words, "[.!?]$") != nil
 
    -- add optional context relating to death type
-   local context = LastWordContext[ply.death_type] or ""
+   local death_type = ply.death_type
+   local context = LastWordContext[death_type] or ""
+   local lastWordsStr = words .. (final and "" or "--") .. context
 
-   net.Start("TTT_LastWordsMsg")
-      net.WriteEntity(ply)
-      net.WriteString(words .. (final and "" or "--") .. context)
-   net.Broadcast()
+   if hook.Run("TTTLastWordsMsg", ply, lastWordsStr, words, death_type) != true then
+      net.Start("TTT_LastWordsMsg")
+         net.WritePlayer(ply)
+         net.WriteString(words)
+         net.WriteUInt(death_type, 2)
+      net.Broadcast()
+   end
 end
 
 local function LastWords(ply, cmd, args)
@@ -363,7 +370,7 @@ local function RadioCommand(ply, cmd, args)
       end
 
       net.Start("TTT_RadioMsg")
-         net.WriteEntity(ply)
+         net.WritePlayer(ply)
          net.WriteString(msg_name)
          net.WriteString(name)
          if rag_name then

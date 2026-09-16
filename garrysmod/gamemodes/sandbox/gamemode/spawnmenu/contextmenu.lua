@@ -12,7 +12,7 @@ function PANEL:Init()
 	self:SetWorldClicker( true )
 
 	self.Canvas = vgui.Create( "DCategoryList", self )
-	self.m_bHangOpen = false
+	self:SetHangOpen( false )
 
 	self:Dock( FILL )
 
@@ -23,8 +23,8 @@ function PANEL:Open()
 	self:SetHangOpen( false )
 
 	-- If the spawn menu is open, try to close it..
-	if ( g_SpawnMenu:IsVisible() ) then
-		g_SpawnMenu:Close( true )
+	if ( IsValid( g_SpawnMenu ) && g_SpawnMenu:IsVisible() ) then
+		g_SpawnMenu:Close()
 	end
 
 	if ( self:IsVisible() ) then return end
@@ -38,16 +38,17 @@ function PANEL:Open()
 
 	RestoreCursorPosition()
 
-	local bShouldShow = true
-
-	-- TODO: Any situation in which we shouldn't show the tool menu on the context menu?
+	local bShouldShow = hook.Run( "ContextMenuShowTool" )
+	local bShow = bShouldShow == nil or bShouldShow
 
 	-- Set up the active panel..
-	if ( bShouldShow && IsValid( spawnmenu.ActiveControlPanel() ) ) then
+	if ( bShow && IsValid( spawnmenu.ActiveControlPanel() ) ) then
 
 		self.OldParent = spawnmenu.ActiveControlPanel():GetParent()
 		self.OldPosX, self.OldPosY = spawnmenu.ActiveControlPanel():GetPos()
+
 		spawnmenu.ActiveControlPanel():SetParent( self )
+
 		self.Canvas:Clear()
 		self.Canvas:AddItem( spawnmenu.ActiveControlPanel() )
 		self.Canvas:Rebuild()
@@ -63,7 +64,7 @@ function PANEL:Open()
 
 end
 
-function PANEL:Close( bSkipAnim )
+function PANEL:Close()
 
 	if ( self:GetHangOpen() ) then
 		self:SetHangOpen( false )
@@ -135,12 +136,17 @@ vgui.Register( "ContextMenu", PANEL, "EditablePanel" )
 
 function CreateContextMenu()
 
+	if ( !hook.Run( "ContextMenuEnabled" ) ) then return end
+
 	if ( IsValid( g_ContextMenu ) ) then
 		g_ContextMenu:Remove()
 		g_ContextMenu = nil
 	end
 
 	g_ContextMenu = vgui.Create( "ContextMenu" )
+
+	if ( !IsValid( g_ContextMenu ) ) then return end
+
 	g_ContextMenu:SetVisible( false )
 
 	--
@@ -148,10 +154,10 @@ function CreateContextMenu()
 	-- so feed clicks to the proper functions..
 	--
 	g_ContextMenu.OnMousePressed = function( p, code )
-		hook.Run( "GUIMousePressed", code, gui.ScreenToVector( gui.MousePos() ) )
+		hook.Run( "GUIMousePressed", code, gui.ScreenToVector( input.GetCursorPos() ) )
 	end
 	g_ContextMenu.OnMouseReleased = function( p, code )
-		hook.Run( "GUIMouseReleased", code, gui.ScreenToVector( gui.MousePos() ) )
+		hook.Run( "GUIMouseReleased", code, gui.ScreenToVector( input.GetCursorPos() ) )
 	end
 
 	hook.Run( "ContextMenuCreated", g_ContextMenu )
@@ -162,48 +168,58 @@ function CreateContextMenu()
 	IconLayout:SetSpaceY( 8 )
 	IconLayout:SetLayoutDir( LEFT )
 	IconLayout:SetWorldClicker( true )
-	IconLayout:SetStretchHeight( false )
-	IconLayout:SetWide( 240 + 32 )
+	IconLayout:SetStretchWidth( true )
+	IconLayout:SetStretchHeight( false ) -- No infinite re-layouts
 	IconLayout:Dock( LEFT )
 
-	for k, v in pairs( list.Get( "DesktopWindows" ) ) do
+	g_ContextMenu.DesktopWidgets = IconLayout
+
+	-- This overrides DIconLayout's OnMousePressed (which is inherited from DPanel), but we don't care about that in this case
+	IconLayout.OnMousePressed = function( s, ... ) s:GetParent():OnMousePressed( ... ) end
+
+	for k, wdgt in pairs( list.Get( "DesktopWindows" ) ) do
 
 		local icon = IconLayout:Add( "DButton" )
 		icon:SetText( "" )
 		icon:SetSize( 80, 82 )
-		icon.Paint = function() end
+		icon.Paint = nil
+		icon.WidgetClass = k
 
 		local image = icon:Add( "DImage" )
-		image:SetImage( v.icon )
+		image:SetImage( wdgt.icon )
 		image:SetSize( 64, 64 )
 		image:Dock( TOP )
 		image:DockMargin( 8, 0, 8, 0 )
 
 		local label = icon:Add( "DLabel" )
 		label:Dock( BOTTOM )
-		label:SetText( v.title )
+		label:SetText( wdgt.title )
 		label:SetContentAlignment( 5 )
-		label:SetTextColor( Color( 255, 255, 255, 255 ) )
+		label:SetTextColor( color_white )
 		label:SetExpensiveShadow( 1, Color( 0, 0, 0, 200 ) )
 
 		icon.DoClick = function()
 
-			--
-			-- v might have changed using autorefresh so grab it again
-			--
-			local newv = list.Get( "DesktopWindows" )[ k ]
+			-- Changing parents causes loss of input and I don't have time to figure out why
+			if ( IsValid( icon.Window ) && icon.Window:GetParent() != g_ContextMenu ) then
+				icon.Window:Remove()
+			end
 
-			if ( v.onewindow ) then
-				if ( IsValid( icon.Window ) ) then icon.Window:Center() return end
+			-- wdgt might have changed using autorefresh, so grab it again
+			local newWdgt = list.GetEntry( "DesktopWindows", k )
+
+			if ( newWdgt.onewindow and IsValid( icon.Window ) ) then
+				icon.Window:Center()
+				return
 			end
 
 			-- Make the window
 			icon.Window = g_ContextMenu:Add( "DFrame" )
-			icon.Window:SetSize( newv.width, newv.height )
-			icon.Window:SetTitle( newv.title )
+			icon.Window:SetSize( newWdgt.width, newWdgt.height )
+			icon.Window:SetTitle( newWdgt.title )
 			icon.Window:Center()
 
-			newv.init( icon, icon.Window )
+			newWdgt.init( icon, icon.Window )
 
 		end
 
@@ -211,22 +227,32 @@ function CreateContextMenu()
 
 end
 
+local spawnmenu_toggle = GetConVar( "spawnmenu_toggle" )
+local contextMenuLastOpen = 0
+
 function GM:OnContextMenuOpen()
 
+	-- Already open (toggle)
+	if ( spawnmenu_toggle:GetBool() && g_ContextMenu and g_ContextMenu:IsVisible() ) then return end
+	contextMenuLastOpen = SysTime()
+
 	-- Let the gamemode decide whether we should open or not..
-	if ( !hook.Call( "ContextMenuOpen", GAMEMODE ) ) then return end
+	if ( !hook.Call( "ContextMenuOpen", self ) ) then return end
 
 	if ( IsValid( g_ContextMenu ) && !g_ContextMenu:IsVisible() ) then
 		g_ContextMenu:Open()
 		menubar.ParentTo( g_ContextMenu )
 	end
 
+	hook.Call( "ContextMenuOpened", self )
+
 end
 
 function GM:OnContextMenuClose()
 
-	if ( IsValid( g_ContextMenu ) ) then
-		g_ContextMenu:Close()
-	end
+	if ( spawnmenu_toggle:GetBool() && SysTime() - contextMenuLastOpen < 0.180 ) then return end
+
+	if ( IsValid( g_ContextMenu ) ) then g_ContextMenu:Close() end
+	hook.Call( "ContextMenuClosed", self )
 
 end

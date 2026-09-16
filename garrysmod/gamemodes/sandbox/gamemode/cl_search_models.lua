@@ -1,4 +1,6 @@
 
+local sbox_search_maxresults = CreateClientConVar( "sbox_search_maxresults", "1024", true, false, "The maximum amount of results the spawnmenu search should show. Model amount limited to 1/2 of this value, entities are limited to 1/4", 1024 )
+
 local totalCalls = 0
 local expectedCalls = 1
 
@@ -11,11 +13,11 @@ local function GetAllFiles( tab, folder, extension, path )
 	local files, folders = file.Find( folder .. "*", path )
 
 	if ( !files ) then
-		MsgN( "Warning! Ignoring '" .. folder .. "' because we cannot search in it!"  )
+		MsgN( "Warning! Ignoring '" .. folder .. "' because we cannot search in it!" )
 		return
 	end
 
-	for k, v in pairs( files ) do
+	for k, v in ipairs( files ) do
 
 		if ( v:EndsWith( extension ) ) then
 			table.insert( tab, ( folder .. v ):lower() )
@@ -23,45 +25,28 @@ local function GetAllFiles( tab, folder, extension, path )
 
 	end
 
-	for k, v in pairs( folders ) do
+	for k, v in ipairs( folders ) do
 		expectedCalls = expectedCalls + 1
 		table.insert( queuedSearch, { tab, folder .. v .. "/", extension, path } )
 	end
 
+	notification.AddProgress( "SandboxSearchIndexing", "#spawnmenu.searchindex", totalCalls / expectedCalls )
+	if ( totalCalls >= expectedCalls ) then notification.Kill( "SandboxSearchIndexing" ) end
+
 end
 
 hook.Add( "Think", "sandbox_queued_search", function()
+
 	if ( #queuedSearch < 1 ) then return end
 
 	local call = queuedSearch[ 1 ]
-	GetAllFiles( call[ 1 ], call[ 2 ], call[ 3 ], call[ 4 ] )
+	GetAllFiles( unpack( call ) )
 	table.remove( queuedSearch, 1 )
 
-	if ( !timer.Exists( "search_models_update" ) || #queuedSearch < 1 ) then
+	if ( !timer.Exists( "search_models_update" ) or #queuedSearch < 1 ) then
 		timer.Create( "search_models_update", 1, 1, function() hook.Run( "SearchUpdate" ) end )
 	end
-end )
 
-hook.Add( "DrawOverlay","sandbox_search_progress", function()
-	if ( !IsValid( g_SpawnMenu ) || !IsValid( g_SpawnMenu.SearchPropPanel ) || expectedCalls == 1 || totalCalls == expectedCalls ) then return end
-
-	-- This code is bad
-	--[[local pnl = g_SpawnMenu.SearchPropPanel
-	local c = pnl:GetChildren()[1]:GetChildren()[1]:GetChildren()[1]
-	if ( IsValid( c ) ) then
-		c.OriginalText = c.OriginalText or c:GetText()
-		c:SetText( c.OriginalText .. " ( Scanning: " .. math.ceil( totalCalls / expectedCalls * 100 ) .. "% )")
-	end]]
-
-	if ( !g_SpawnMenu:IsVisible() ) then return end
-
-	local pnl = g_SpawnMenu.SearchPropPanel
-	local x, y = pnl:LocalToScreen( 0, 0 )
-	local maxw = pnl:GetWide()
-	if ( pnl.VBar && pnl.VBar.Enabled ) then maxw = maxw - 20 end
-
-	draw.RoundedBox( 0, x, y, maxw, 8, Color( 0, 0, 0, 200 ) )
-	draw.RoundedBox( 0, x, y, maxw * ( totalCalls / expectedCalls ), 8, Color( 0, 128, 255, 200 ) )
 end )
 
 --
@@ -70,7 +55,7 @@ end )
 local model_list = nil
 search.AddProvider( function( str )
 
-	str = str:PatternSafe()
+	local searchTerms = string.Explode( " ", str )
 
 	if ( model_list == nil ) then
 
@@ -81,28 +66,35 @@ search.AddProvider( function( str )
 
 	local models = {}
 
-	for k, v in pairs( model_list ) do
+	for k, v in ipairs( model_list ) do
 
-		-- Don't search in the models/ bit of every model, because every model has this bit
-		local modelpath = v
-		if ( modelpath:StartWith( "models/" ) ) then modelpath = modelpath:sub( 8 ) end
+		for srchId, srchTxt in ipairs( searchTerms ) do
+			-- Don't search in the models/ and .mdl bit of every model, because every model has this bit, unless they are looking for direct model path
+			-- We do this for each search term individually, just to avoid edge cases where searching for x.mdl functions differently if it's the last search term or not
+			local modelpath = v
+			if ( modelpath:StartsWith( "models/" ) && modelpath:EndsWith( ".mdl" ) && !srchTxt:EndsWith( ".mdl" ) ) then modelpath = modelpath:sub( 8, modelpath:len() - 4 ) end
 
-		if ( modelpath:find( str ) ) then
+			if ( !modelpath:find( srchTxt, nil, true ) ) then
 
-			if ( IsUselessModel( v ) ) then continue end
+				break
 
-			local entry = {
-				text = v:GetFileFromFilename(),
-				func = function() RunConsoleCommand( "gm_spawn", v ) end,
-				icon = spawnmenu.CreateContentIcon( "model", g_SpawnMenu.SearchPropPanel, { model = v } ),
-				words = { v }
-			}
+			elseif ( srchId == #searchTerms ) then
 
-			table.insert( models, entry )
+				if ( IsUselessModel( v ) ) then continue end
 
+				local entry = {
+					text = v:GetFileFromFilename(),
+					func = function() RunConsoleCommand( "gm_spawn", v ) end,
+					icon = spawnmenu.CreateContentIcon( "model", g_SpawnMenu.SearchPropPanel, { model = v } ),
+					words = { v }
+				}
+
+				table.insert( models, entry )
+
+			end
 		end
 
-		if ( #models >= 512 ) then break end
+		if ( #models >= sbox_search_maxresults:GetInt() / 2 ) then break end
 
 	end
 
@@ -110,71 +102,79 @@ search.AddProvider( function( str )
 
 end, "props" )
 
+hook.Add( "GameContentChanged", "ResetModelSearchCache", function()
+
+	-- Addons got remounted, reset the model search cache
+	model_list = nil
+
+	-- Reset any ongoing search process
+	totalCalls = 0
+	expectedCalls = 1
+	queuedSearch = {}
+
+end )
+
+
 --
 -- Entity, vehicles
 --
-search.AddProvider( function( str )
+local function AddSearchProvider( listname, ctype, stype )
+	search.AddProvider( function( str )
 
-	str = str:PatternSafe()
+		local searchTerms = string.Explode( " ", str )
 
-	local results = {}
+		local results = {}
+		for name_c, v in pairs( list.Get( listname ) ) do
+			if ( !istable( v ) ) then continue end -- Some mod doing something wrong
+			if ( listname == "Weapon" and !v.Spawnable ) then continue end
 
-	local entities = {}
+			local name = v.PrintName or v.Name
+			if ( !isstring( name ) and !isstring( name_c ) ) then continue end
 
-	//for k, v in pairs( scripted_ents.GetSpawnable() ) do
-	for k, v in pairs( list.Get( "SpawnableEntities" ) ) do
-		v.ClassName = k
-		v.ScriptedEntityType = "entity"
-		table.insert( entities, v )
-	end
+			local name_lang = ( isstring( name ) and language.GetPhrase( name ) or name )
 
-	for k, v in pairs( list.Get( "Vehicles" ) ) do
-		v.ClassName = k
-		v.PrintName = v.Name
-		v.ScriptedEntityType = "vehicle"
-		table.insert( entities, v )
-	end
+			for srchId, srchTxt in ipairs( searchTerms ) do
 
-	for k, v in pairs( list.Get( "NPC" ) ) do
-		v.ClassName = k
-		v.PrintName = v.Name
-		v.ScriptedEntityType = "npc"
-		table.insert( entities, v )
-	end
+				if ( !(
+					( isstring( name_lang ) and name_lang:lower():find( srchTxt, nil, true ) ) or
+					( isstring( name_c ) and name_c:lower():find( srchTxt, nil, true ) )
+				) ) then
 
-	for k, v in pairs( list.Get( "Weapon" ) ) do
-		v.ClassName = k
-		v.ScriptedEntityType = "weapon"
-		table.insert( entities, v )
-	end
+					break
 
-	for k, v in pairs( entities ) do
+				elseif ( srchId == #searchTerms ) then
 
-		local name = v.ClassName or v.PrintName
-		if ( !name ) then continue end
+					local contentIconData = {
+						nicename = name or name_c,
+						spawnname = name_c,
+						material = v.IconOverride or "entities/" .. name_c .. ".png",
+						admin = v.AdminOnly
+					}
 
-		if ( name:lower():find( str ) ) then -- TODO: Search print name AND class name?
+					if ( listname == "NPC" ) then contentIconData.weapon = v.Weapons end
 
-			local entry = {
-				text = v.PrintName or v.ClassName,
-				icon = spawnmenu.CreateContentIcon( v.ScriptedEntityType or "entity", nil, {
-					nicename = v.PrintName or v.ClassName,
-					spawnname = v.ClassName,
-					material = "entities/" .. v.ClassName .. ".png",
+					local entry = {
+						text = name or name_c,
+						icon = spawnmenu.CreateContentIcon( ctype or "entity", nil, contentIconData ),
+						words = { v }
+					}
 
-					admin = v.AdminOnly
-				} ),
-				words = { v }
-			}
+					table.insert( results, entry )
 
-			table.insert( results, entry )
+				end
+			end
+
+			if ( #results >= sbox_search_maxresults:GetInt() / 4 ) then break end
 
 		end
 
-		if ( #results >= 128 ) then break end
+		table.SortByMember( results, "text", true )
+		return results
 
-	end
+	end, stype )
+end
 
-	return results
-
-end, "entities" )
+AddSearchProvider( "SpawnableEntities", "entity", "entities" )
+AddSearchProvider( "Vehicles", "vehicle", "vehicles" )
+AddSearchProvider( "NPC", "npc", "npcs" )
+AddSearchProvider( "Weapon", "weapon", "weapons" )

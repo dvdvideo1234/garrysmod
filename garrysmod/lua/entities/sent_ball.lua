@@ -3,10 +3,10 @@ AddCSLuaFile()
 
 DEFINE_BASECLASS( "base_anim" )
 
-ENT.PrintName = "Bouncy Ball"
+ENT.PrintName = "#sent_ball"
 ENT.Author = "Garry Newman"
-ENT.Information = "An edible bouncy ball"
-ENT.Category = "Fun + Games"
+ENT.Information = "An edible bouncy ball. Press USE on the bouncy ball to eat it."
+ENT.Category = "#spawnmenu.category.fun_games"
 
 ENT.Editable = true
 ENT.Spawnable = true
@@ -21,7 +21,9 @@ function ENT:SetupDataTables()
 	self:NetworkVar( "Float", 0, "BallSize", { KeyName = "ballsize", Edit = { type = "Float", min = self.MinSize, max = self.MaxSize, order = 1 } } )
 	self:NetworkVar( "Vector", 0, "BallColor", { KeyName = "ballcolor", Edit = { type = "VectorColor", order = 2 } } )
 
-	self:NetworkVarNotify( "BallSize", self.OnBallSizeChanged )
+	if ( SERVER ) then
+		self:NetworkVarNotify( "BallSize", self.OnBallSizeChanged )
+	end
 
 end
 
@@ -33,12 +35,24 @@ end
 --
 function ENT:SpawnFunction( ply, tr, ClassName )
 
-	if ( !tr.Hit ) then return end
-
 	local size = math.random( 16, 48 )
+	local SpawnPos = tr.HitPos + tr.HitNormal * size
+
+	-- Make sure the spawn position is not out of bounds
+	local oobTr = util.TraceLine( {
+		start = tr.HitPos,
+		endpos = SpawnPos,
+		mask = MASK_SOLID_BRUSHONLY
+	} )
+
+	if ( oobTr.Hit ) then
+		SpawnPos = oobTr.HitPos + oobTr.HitNormal * ( tr.HitPos:Distance( oobTr.HitPos ) / 2 )
+	end
 
 	local ent = ents.Create( ClassName )
-	ent:SetPos( tr.HitPos + tr.HitNormal * size )
+	if ( !IsValid( ent ) ) then return end
+
+	ent:SetPos( SpawnPos )
 	ent:SetBallSize( size )
 	ent:Spawn()
 	ent:Activate()
@@ -58,7 +72,12 @@ function ENT:Initialize()
 	-- We will put this here just in case, even though it should be called from OnBallSizeChanged in any case
 	self:RebuildPhysics()
 
-	-- Select a random color for the ball
+	-- Set the size if it wasn't set already..
+	if ( self:GetBallSize() == 0 ) then self:SetBallSize( 32 ) end
+
+	-- Select a random color for the ball, if one wasn't set.
+	if ( !self:GetBallColor():IsZero() ) then return end
+
 	self:SetBallColor( table.Random( {
 		Vector( 1, 0.3, 0.3 ),
 		Vector( 0.3, 1, 0.3 ),
@@ -82,12 +101,21 @@ function ENT:RebuildPhysics( value )
 
 end
 
-function ENT:OnBallSizeChanged( varname, oldvalue, newvalue )
+if ( SERVER ) then
 
-	-- Do not rebuild if the size wasn't changed
-	if ( oldvalue == newvalue ) then return end
+	function ENT:OnBallSizeChanged( varname, oldvalue, newvalue )
 
-	self:RebuildPhysics( newvalue )
+		-- Do not rebuild if the size wasn't changed
+		if ( oldvalue == newvalue ) then return end
+
+		self:RebuildPhysics( newvalue )
+
+	end
+
+	function ENT:KeyValue( key, val )
+		if ( key == "ball_size" ) then self:SetBallSize( val ) end
+		if ( key == "rendercolor" ) then self:SetBallColor( Vector( val ) / 255 ) end
+	end
 
 end
 

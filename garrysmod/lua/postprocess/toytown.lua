@@ -17,7 +17,7 @@ function DrawToyTown( NumPasses, H )
 
 	for i = 1, NumPasses do
 
-		render.UpdateScreenEffectTexture()
+		render.CopyRenderTargetToTexture( render.GetScreenEffectTexture() )
 
 		surface.DrawTexturedRect( 0, 0, ScrW(), H )
 		surface.DrawTexturedRectUV( 0, ScrH() - H, ScrW(), H, 0, 1, 1, 0 )
@@ -34,7 +34,7 @@ hook.Add( "RenderScreenspaceEffects", "RenderToyTown", function()
 	if ( !render.SupportsPixelShaders_2_0() ) then return end
 
 	local NumPasses = pp_toytown_passes:GetInt()
-	local H = ScrH() * pp_toytown_size:GetFloat()
+	local H = math.floor( ScrH() * pp_toytown_size:GetFloat() )
 
 	DrawToyTown( NumPasses, H )
 
@@ -48,16 +48,13 @@ list.Set( "PostProcess", "#toytown_pp", {
 
 	cpanel = function( CPanel )
 
-		CPanel:AddControl( "Header", { Description = "#toytown_pp.desc" } )
-		CPanel:AddControl( "CheckBox", { Label = "#toytown_pp.enable", Command = "pp_toytown" } )
+		CPanel:Help( "#toytown_pp.desc" )
+		CPanel:CheckBox( "#toytown_pp.enable", "pp_toytown" )
 
-		local params = { Options = {}, CVars = {}, MenuButton = "1", Folder = "frame_blend" }
-		params.Options[ "#preset.default" ] = { pp_toytown_passes = "3", pp_toytown_size = "0.5" }
-		params.CVars = table.GetKeys( params.Options[ "#preset.default" ] )
-		CPanel:AddControl( "ComboBox", params )
+		CPanel:ToolPresets( "toytown", { pp_toytown_passes = "3", pp_toytown_size = "0.5" } )
 
-		CPanel:AddControl( "Slider", { Label = "#toytown_pp.passes", Command = "pp_toytown_passes", Type = "Int", Min = "1", Max = "100" } )
-		CPanel:AddControl( "Slider", { Label = "#toytown_pp.height", Command = "pp_toytown_size", Type = "Float", Min = "0", Max = "1" } )
+		CPanel:NumSlider( "#toytown_pp.passes", "pp_toytown_passes", 1, 100, 0 )
+		CPanel:NumSlider( "#toytown_pp.height", "pp_toytown_size", 0, 1 )
 
 	end
 

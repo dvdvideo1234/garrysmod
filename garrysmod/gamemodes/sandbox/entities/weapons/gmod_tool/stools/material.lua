@@ -29,7 +29,9 @@ local function SetMaterial( Player, Entity, Data )
 	return true
 
 end
-duplicator.RegisterEntityModifier( "material", SetMaterial )
+if ( SERVER ) then
+	duplicator.RegisterEntityModifier( "material", SetMaterial )
+end
 
 -- Left click applies the current material
 function TOOL:LeftClick( trace )
@@ -70,11 +72,6 @@ function TOOL:Reload( trace )
 	SetMaterial( self:GetOwner(), ent, { MaterialOverride = "" } )
 	return true
 
-end
-
-if ( IsMounted( "tf" ) ) then
-	list.Add( "OverrideMaterials", "models/player/shared/gold_player" )
-	list.Add( "OverrideMaterials", "models/player/shared/ice_player" )
 end
 
 list.Add( "OverrideMaterials", "models/wireframe" )
@@ -123,10 +120,39 @@ list.Add( "OverrideMaterials", "phoenix_storms/wire/pcb_blue" )
 list.Add( "OverrideMaterials", "hunter/myplastic" )
 list.Add( "OverrideMaterials", "models/XQM/LightLinesRed_tool" )
 
+if ( IsMounted( "tf" ) ) then
+	list.Add( "OverrideMaterials", "models/player/shared/gold_player" )
+	list.Add( "OverrideMaterials", "models/player/shared/ice_player" )
+end
+
 function TOOL.BuildCPanel( CPanel )
 
-	CPanel:AddControl( "Header", { Description = "#tool.material.help" } )
+	CPanel:Help( "#tool.material.help" )
 
-	CPanel:MatSelect( "material_override", list.Get( "OverrideMaterials" ), true, 0.25, 0.25 )
+	local filter = CPanel:TextEntry( "#spawnmenu.quick_filter_tool" )
+	filter:SetUpdateOnType( true )
 
+	-- Remove duplicate materials, preserving order
+	local materials = {}
+	local seen = {}
+	for id, str in ipairs( list.Get( "OverrideMaterials" ) ) do
+	    if ( !seen[ str ] ) then
+	        seen[ str ] = true
+	        table.insert( materials, str )
+	    end
+	end
+
+	local matlist = CPanel:MatSelect( "material_override", materials, true, 0.25, 0.25 )
+
+	filter.OnValueChange = function( s, txt )
+		for id, pnl in ipairs( matlist.Controls ) do
+			if ( !pnl.Value:lower():find( txt:lower(), nil, true ) ) then
+				pnl:SetVisible( false )
+			else
+				pnl:SetVisible( true )
+			end
+		end
+		matlist:InvalidateChildren()
+		CPanel:InvalidateChildren()
+	end
 end

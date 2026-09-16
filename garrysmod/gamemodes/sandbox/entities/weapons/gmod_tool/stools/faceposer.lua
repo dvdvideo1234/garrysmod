@@ -2,7 +2,8 @@
 TOOL.Category = "Poser"
 TOOL.Name = "#tool.faceposer.name"
 
-local gLastFacePoseEntity = NULL
+local MAXSTUDIOFLEXCTRL = 96
+
 TOOL.FaceTimer = 0
 
 TOOL.Information = {
@@ -36,13 +37,18 @@ function TOOL:SetFacePoserEntity( ent )
 	return self:GetWeapon():SetNWEntity( 1, ent )
 end
 
+local LastFPEntity = NULL
+local LastFPEntityValid = false
 function TOOL:Think()
 
 	-- If we're on the client just make sure the context menu is up to date
 	if ( CLIENT ) then
-		if ( self:FacePoserEntity() == gLastFacePoseEntity ) then return end
-		gLastFacePoseEntity = self:FacePoserEntity()
-		self:UpdateFaceControlPanel()
+
+		if ( self:FacePoserEntity() == LastFPEntity && IsValid( LastFPEntity ) == LastFPEntityValid ) then return end
+
+		LastFPEntity = self:FacePoserEntity()
+		LastFPEntityValid = IsValid( LastFPEntity )
+		self:RebuildControlPanel( self:FacePoserEntity() )
 
 		return
 	end
@@ -55,21 +61,13 @@ function TOOL:Think()
 
 	local FlexNum = ent:GetFlexNum()
 	if ( FlexNum <= 0 ) then return end
+	if ( FlexNum > MAXSTUDIOFLEXCTRL ) then FlexNum = MAXSTUDIOFLEXCTRL end
 
-	for i = 0, FlexNum do
+	for i = 0, FlexNum - 1 do
 
-		local Name = ent:GetFlexName( i )
-
-		if ( IsUselessFaceFlex( Name ) ) then
-
-			ent:SetFlexWeight( i, 0 )
-
-		else
-
-			local num = self:GetClientNumber( "flex" .. i )
-			ent:SetFlexWeight( i, num )
-
-		end
+		local num = self:GetClientNumber( "flex" .. i )
+		local min, max = ent:GetFlexBounds( i )
+		ent:SetFlexWeight( i, math.Remap( num, min, max, 0, 1 ) )
 
 	end
 
@@ -94,6 +92,7 @@ function TOOL:RightClick( trace )
 
 	local FlexNum = ent:GetFlexNum()
 	if ( FlexNum == 0 ) then return false end
+	if ( FlexNum > MAXSTUDIOFLEXCTRL ) then FlexNum = MAXSTUDIOFLEXCTRL end
 
 	if ( SERVER ) then
 
@@ -107,12 +106,14 @@ function TOOL:RightClick( trace )
 
 	end
 
-	for i=0, FlexNum - 1 do
+	for i = 0, FlexNum - 1 do
 
-		local Weight = "0.0"
-
-		if ( i <= FlexNum ) then
-			Weight = ent:GetFlexWeight( i )
+		local Weight = 0
+		if ( !ent:HasFlexManipulatior() ) then
+			Weight = 0
+		elseif ( i <= FlexNum ) then
+			local min, max = ent:GetFlexBounds( i )
+			Weight = math.Remap( ent:GetFlexWeight( i ), 0, 1, min, max )
 		end
 
 		self:GetOwner():ConCommand( "faceposer_flex" .. i .. " " .. Weight )
@@ -146,11 +147,11 @@ end
 
 if ( SERVER ) then
 
-	function CC_Face_Randomize( pl, command, arguments )
+	local function CC_Face_Randomize( ply, command, arguments )
 
-		for i=0, 64 do
+		for i = 0, MAXSTUDIOFLEXCTRL - 1 do
 			local num = math.Rand( 0, 1 )
-			pl:ConCommand( "faceposer_flex" .. i .. " " .. string.format( "%.3f", num ) )
+			ply:ConCommand( "faceposer_flex" .. i .. " " .. string.format( "%.3f", num ) )
 		end
 
 	end
@@ -162,34 +163,21 @@ end
 -- The rest of the code is clientside only, it is not used on server
 if ( SERVER ) then return end
 
-for i=0, 64 do
+for i = 0, MAXSTUDIOFLEXCTRL - 1 do
 	TOOL.ClientConVar[ "flex" .. i ] = "0"
 end
 
 TOOL.ClientConVar[ "scale" ] = "1.0"
 
--- Updates the spawn menu panel
-function TOOL:UpdateFaceControlPanel( index )
-
-	local CPanel = controlpanel.Get( "faceposer" )
-	if ( !CPanel ) then Msg("Couldn't find faceposer panel!\n") return end
-
-	CPanel:ClearControls()
-	self.BuildCPanel( CPanel, self:FacePoserEntity() )
-
-end
-
--- Updates the Control Panel
 local ConVarsDefault = TOOL:BuildConVarList()
 
-function TOOL.BuildCPanel( CPanel, FaceEntity )
+function TOOL.BuildCPanel( CPanel, faceEntity )
 
-	CPanel:AddControl( "Header", { Description = "#tool.faceposer.desc" } )
+	CPanel:Help( "#tool.faceposer.desc" )
 
-	FaceEntity = FaceEntity or gLastFacePoseEntity
-	if ( !IsValid( FaceEntity ) || FaceEntity:GetFlexNum() == 0 ) then return end
+	if ( !IsValid( faceEntity ) || faceEntity:GetFlexNum() == 0 ) then return end
 
-	CPanel:AddControl( "ComboBox", { MenuButton = 1, Folder = "face", Options = { [ "#preset.default" ] = ConVarsDefault }, CVars = table.GetKeys( ConVarsDefault ) } )
+	CPanel:ToolPresets( "face", ConVarsDefault )
 
 	local QuickFace = vgui.Create( "MatSelect", CPanel )
 	QuickFace:SetItemWidth( 64 )
@@ -198,17 +186,15 @@ function TOOL.BuildCPanel( CPanel, FaceEntity )
 	QuickFace.List:SetSpacing( 1 )
 	QuickFace.List:SetPadding( 0 )
 
-	QuickFace:SetNumRows( 3 )
-
-	-- Todo: These really need to be the name of the flex.
+	QuickFace:SetAutoHeight( true )
 
 	local Clear = {}
-	for i=0, 64 do
+	for i = 0, MAXSTUDIOFLEXCTRL - 1 do
 		Clear[ "faceposer_flex" .. i ] = 0
 	end
-
 	QuickFace:AddMaterialEx( "#faceposer.clear", "vgui/face/clear", nil, Clear )
 
+	-- Todo: These really need to be the name of the flex.
 	QuickFace:AddMaterialEx( "#faceposer.openeyes", "vgui/face/open_eyes", nil, {
 		faceposer_flex0 = "1",
 		faceposer_flex1 = "1",
@@ -346,27 +332,111 @@ function TOOL.BuildCPanel( CPanel, FaceEntity )
 
 	CPanel:AddItem( QuickFace )
 
-	CPanel:AddControl( "Slider", { Label = "#tool.faceposer.scale", Command = "faceposer_scale", Type = "Float", Min = -5, Max = 5, Help = true } )
-	CPanel:AddControl( "Button", { Text = "#tool.faceposer.randomize", Command = "faceposer_randomize" } )
+	CPanel:NumSlider( "#tool.faceposer.scale", "faceposer_scale", -5, 5 ):SetHeight( 16 )
+	CPanel:ControlHelp( "#tool.faceposer.scale.help" )
 
-	local lastItem
-	for i=0, FaceEntity:GetFlexNum() do
+	CPanel:Button( "#tool.faceposer.randomize", "faceposer_randomize" )
 
-		local Name = FaceEntity:GetFlexName( i )
+	local filter = CPanel:TextEntry( "#spawnmenu.quick_filter_tool" )
+	filter:SetUpdateOnType( true )
 
-		if ( !IsUselessFaceFlex( Name ) ) then
+	-- Group flex controllers by their type..
+	local flexGroups = {}
+	for i = 0, faceEntity:GetFlexNum() - 1 do
+		local name = faceEntity:GetFlexName( i )
 
-			local min, max = FaceEntity:GetFlexBounds( i )
+		if ( !IsUselessFaceFlex( name ) ) then
+			local group = faceEntity:GetFlexType( i )
 
-			local ctrl = CPanel:AddControl( "Slider", { Label = Name, Command = "faceposer_flex" .. i, Type = "Float", Min = min, Max = max } )
-			ctrl:SetHeight( 10 ) -- this makes the controls all bunched up like how we want
-			lastItem = ctrl
+			if ( group == name ) then group = language.GetPhrase( "#spawnmenu.category.other" ) end
 
+			local min, max = faceEntity:GetFlexBounds( i )
+
+			flexGroups[ group ] = flexGroups[ group ] or { sortId = table.Count( flexGroups ), items = {} }
+			table.insert( flexGroups[ group ].items, { name = name, id = i, min = min, max = max, default = 0 } )
+		end
+	end
+
+	local flexControllers = {}
+	local moreThanOneGroup = table.Count( flexGroups ) > 1
+	for group, groupData in SortedPairsByMemberValue( flexGroups, "sortId" ) do
+		local items = groupData.items
+
+		local groupForm = vgui.Create( "DForm", CPanel )
+		groupForm:SetLabel( string.NiceName( group ) )
+
+		-- Give the DForm a nice outline
+		groupForm.GetBackgroundColor = function() return color_white end
+
+		function groupForm:Paint( w, h )
+			derma.SkinHook( "Paint", "CategoryList", self, w, h )
+			derma.SkinHook( "Paint", "CollapsibleCategory", self, w, h )
 		end
 
-	end
-	lastItem:DockPadding( 0, 0, 0, 20 )
+		CPanel:AddItem( groupForm )
 
+		for id, item in SortedPairsByMemberValue( items, "id" ) do
+			local ctrl = groupForm:NumSlider( string.NiceName( item.name ), "faceposer_flex" .. item.id, item.min, item.max )
+			ctrl:SetDefaultValue( item.default )
+			ctrl:SetHeight( 11 ) -- This makes the controls all bunched up like how we want
+			ctrl:DockPadding( 0, -6, 0, -4 ) -- Try to make the lower part of the text visible
+			ctrl.originalName = item.name
+			table.insert( flexControllers, ctrl )
+
+			if ( item.id >= MAXSTUDIOFLEXCTRL ) then
+				ctrl:SetEnabled( false )
+				ctrl:SetTooltip( "#tool.faceposer.too_many_flexes" )
+			end
+		end
+
+		-- Per category random/clear
+		if ( moreThanOneGroup ) then
+			local btnContainer = vgui.Create( "Panel", groupForm )
+			btnContainer:SetHeight( 22 )
+
+			local btnRnd = vgui.Create( "DButton", btnContainer )
+			btnRnd:SetText( "#tool.faceposer.randomize" )
+			btnRnd:Dock( FILL )
+			btnRnd.DoClick = function()
+				for id, item in pairs( items ) do
+					local num = math.Rand( item.min, item.max )
+					LocalPlayer():ConCommand( "faceposer_flex" .. item.id .. " " .. string.format( "%.2f", num ) )
+				end
+			end
+
+			local btnClear = vgui.Create( "DButton", btnContainer )
+			btnClear:SetText( "#faceposer.clear" )
+			btnClear:DockMargin( 8, 0, 0, 0 )
+			btnClear:Dock( RIGHT )
+			btnClear.DoClick = function()
+				for id, item in pairs( items ) do
+					LocalPlayer():ConCommand( "faceposer_flex" .. item.id .. " " .. string.format( "%.2f", item.default ) )
+				end
+			end
+
+			groupForm:AddItem( btnContainer )
+		end
+
+		-- HACK: Add some padding to the bottom of the list, because Dock won't
+		local padding = vgui.Create( "Panel", groupForm )
+		padding:SetHeight( 0 )
+		groupForm:AddItem( padding )
+
+	end
+
+	-- Actual searching
+	filter.OnValueChange = function( pnl, txt )
+		for id, flxpnl in ipairs( flexControllers ) do
+			if ( !flxpnl:GetText():lower():find( txt:lower(), nil, true ) && !flxpnl.originalName:lower():find( txt:lower(), nil, true ) ) then
+				flxpnl:SetVisible( false )
+			else
+				flxpnl:SetVisible( true )
+			end
+
+			flxpnl:InvalidateParent()
+		end
+		CPanel:InvalidateChildren()
+	end
 end
 
 local FacePoser = surface.GetTextureID( "gui/faceposer_indicator" )
@@ -385,6 +455,13 @@ function TOOL:DrawHUD()
 	if ( eyeattachment != 0 ) then
 		local attachment = selected:GetAttachment( eyeattachment )
 		pos = attachment.Pos
+	else
+		-- The model has no "eyes" attachment, try to find a bone with "head" in its name
+		for i = 0, selected:GetBoneCount() - 1 do
+			if ( selected:GetBoneName( i ) && selected:GetBoneName( i ):lower():find( "head" ) ) then
+				pos = selected:GetBonePosition( i )
+			end
+		end
 	end
 
 	local scrpos = pos:ToScreen()

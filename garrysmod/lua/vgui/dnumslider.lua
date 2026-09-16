@@ -1,6 +1,8 @@
 
 local PANEL = {}
 
+AccessorFunc( PANEL, "m_fDefaultValue", "DefaultValue" )
+
 function PANEL:Init()
 
 	self.TextArea = self:Add( "DTextEntry" )
@@ -18,7 +20,33 @@ function PANEL:Init()
 	self.Slider:SetTrapInside( true )
 	self.Slider:Dock( FILL )
 	self.Slider:SetHeight( 16 )
+	self.Slider.ResetToDefaultValue = function( s )
+		self:ResetToDefaultValue()
+	end
 	Derma_Hook( self.Slider, "Paint", "Paint", "NumSlider" )
+
+	-- Prevent Mouse3/4/5 from sliding the slider.
+	-- Done this way to not touch the base class, which could affect addons
+	local KnobOnMousePressed = self.Slider.Knob.OnMousePressed
+	self.Slider.Knob.OnMousePressed = function( panel, btnId )
+		if ( btnId == MOUSE_RIGHT ) then
+			self:DoRightClick()
+			return true
+		end
+		if ( btnId != MOUSE_LEFT && btnId != MOUSE_MIDDLE ) then return true end
+
+		KnobOnMousePressed( panel, btnId )
+	end
+	local SliderOnMousePressed = self.Slider.OnMousePressed
+	self.Slider.OnMousePressed = function( panel, btnId )
+		if ( btnId == MOUSE_RIGHT ) then
+			self:DoRightClick()
+			return true
+		end
+		if ( btnId != MOUSE_LEFT ) then return true end
+
+		SliderOnMousePressed( panel, btnId )
+	end
 
 	self.Label = vgui.Create ( "DLabel", self )
 	self.Label:Dock( LEFT )
@@ -45,14 +73,41 @@ function PANEL:Init()
 
 end
 
+function PANEL:DoRightClick()
+
+	local m = DermaMenu()
+	if ( self:GetDefaultValue() ) then m:AddOption( "#tool.reset_to_default", function() self:ResetToDefaultValue() end ):SetIcon( "icon16/arrow_rotate_clockwise.png" ) end
+	m:AddOption( "#spawnmenu.menu.copy", function() SetClipboardText( self:GetValue() ) end ):SetIcon( "icon16/page_copy.png" )
+	m:Open()
+
+end
+
 function PANEL:SetMinMax( min, max )
 	self.Scratch:SetMin( tonumber( min ) )
 	self.Scratch:SetMax( tonumber( max ) )
 	self:UpdateNotches()
+	self:ValueChanged( self:GetValue() ) -- Update slider positon for the new range
+end
+
+function PANEL:ApplySchemeSettings()
+
+	self.Label:ApplySchemeSettings()
+
+	-- Copy the color of the label to the slider notches and the text entry
+	local col = self.Label:GetTextStyleColor()
+	if ( self.Label:GetTextColor() ) then col = self.Label:GetTextColor() end
+
+	self.TextArea:SetTextColor( col )
+
+	local color = table.Copy( col )
+	color.a = 100 -- Fade it out a bit so it looks right
+	self.Slider:SetNotchColor( color )
+
 end
 
 function PANEL:SetDark( b )
 	self.Label:SetDark( b )
+	self:ApplySchemeSettings()
 end
 
 function PANEL:GetMin()
@@ -67,12 +122,18 @@ function PANEL:GetRange()
 	return self:GetMax() - self:GetMin()
 end
 
+function PANEL:ResetToDefaultValue()
+	if ( !self:GetDefaultValue() ) then return end
+	self:SetValue( self:GetDefaultValue() )
+end
+
 function PANEL:SetMin( min )
 
 	if ( !min ) then min = 0 end
 
 	self.Scratch:SetMin( tonumber( min ) )
 	self:UpdateNotches()
+	self:ValueChanged( self:GetValue() ) -- Update slider positon for the new range
 
 end
 
@@ -82,6 +143,7 @@ function PANEL:SetMax( max )
 
 	self.Scratch:SetMax( tonumber( max ) )
 	self:UpdateNotches()
+	self:ValueChanged( self:GetValue() ) -- Update slider positon for the new range
 
 end
 
@@ -141,6 +203,10 @@ function PANEL:SetText( text )
 	self.Label:SetText( text )
 end
 
+function PANEL:GetText()
+	return self.Label:GetText()
+end
+
 function PANEL:ValueChanged( val )
 
 	val = math.Clamp( tonumber( val ) || 0, self:GetMin(), self:GetMax() )
@@ -149,9 +215,16 @@ function PANEL:ValueChanged( val )
 		self.TextArea:SetValue( self.Scratch:GetTextValue() )
 	end
 
-	self.Slider:SetSlideX( self.Scratch:GetFraction( val ) )
+	self.Slider:SetSlideX( self.Scratch:GetFraction() )
 
 	self:OnValueChanged( val )
+	self:SetCookie( "slider_val", val )
+
+end
+
+function PANEL:LoadCookies()
+
+	self:SetValue( self:GetCookie( "slider_val" ) )
 
 end
 
@@ -186,6 +259,14 @@ function PANEL:UpdateNotches()
 		self.Slider:SetNotches( self:GetWide() / 4 )
 	end
 
+end
+
+function PANEL:SetEnabled( b )
+	self.TextArea:SetEnabled( b )
+	self.Slider:SetEnabled( b )
+	self.Scratch:SetEnabled( b )
+	self.Label:SetEnabled( b )
+	FindMetaTable( "Panel" ).SetEnabled( self, b ) -- There has to be a better way!
 end
 
 function PANEL:GenerateExample( ClassName, PropertySheet, Width, Height )
@@ -242,7 +323,7 @@ end
 
 function PANEL:SetActionFunction( func )
 
-	self.OnValueChanged = function( self, val ) func( self, "SliderMoved", val, 0 ) end
+	self.OnValueChanged = function( pnl, val ) func( pnl, "SliderMoved", val, 0 ) end
 
 end
 
