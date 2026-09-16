@@ -263,5 +263,6 @@ function meta:AngleBetween( vec, nrm )
 	if ( nrm == nil ) then
 		return math.acos( self:Dot( vec ) / math.sqrt( self:LengthSqr() * vec:LengthSqr() ) )
 	end
+
 	return math.atan2( self:Determinant( vec, nrm:GetNormalized() ), self:Dot( vec ) )
 end
