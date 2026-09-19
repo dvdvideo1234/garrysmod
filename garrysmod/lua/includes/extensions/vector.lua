@@ -2,7 +2,7 @@
 local meta = FindMetaTable( "Vector" )
 
 --[[---------------------------------------------------------
-Converts Vector to Color - alpha precision lost, must reset
+Converts a vector object to a color object
 -----------------------------------------------------------]]
 function meta:ToColor( num )
 	local x, y, z = self:Unpack()
@@ -22,14 +22,6 @@ Converts Vector to Array - removes all metrods from the copy
 -----------------------------------------------------------]]
 function meta:ToArray()
 	return { self:Unpack() }
-end
-
---[[---------------------------------------------------------
-Converts a vector object to a color object
------------------------------------------------------------]]
-function meta:ToColor()
-	local x, y, z = meta.Unpack( self )
-	return Color( x * 255, y * 255, z * 255 )
 end
 
 --[[---------------------------------------------------------
