@@ -2,7 +2,7 @@
 local meta = FindMetaTable( "Vector" )
 
 --[[---------------------------------------------------------
-	Converts a vector object to a color with alpha as argument
+	Converts a vector object to a color with alpha as argument with alpha [0-1]
 -----------------------------------------------------------]]
 function meta:ToColor( num )
 
@@ -108,7 +108,7 @@ function meta:SubUnpacked( x, y, z )
 end
 
 --[[---------------------------------------------------------
-Adds a unpacked x, y and z to a copy vector
+Subtracts unpacked x, y and z from a copy vector
 -----------------------------------------------------------]]
 function meta:GetSubUnpacked( ... )
 
@@ -287,7 +287,8 @@ function meta:GetProjected( ... )
 end
 
 --[[---------------------------------------------------------
-Retrieves the angle between two vectors from 0 to math.pi
+Retrieves the angle between two vectors from 0 to math.pi or
+signed angle from -math.pi to math.pi when a normal is supplied
 -----------------------------------------------------------]]
 function meta:AngleBetween( vec, nrm )
 
