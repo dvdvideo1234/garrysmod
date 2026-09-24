@@ -12,25 +12,6 @@ function meta:ToColor( num )
 end
 
 --[[---------------------------------------------------------
-Converts Vector to Table - removes all methods from the copy
------------------------------------------------------------]]
-function meta:ToTable()
-
-	local x, y, z = self:Unpack()
-	return { x = x, y = y, z = z }
-
-end
-
---[[---------------------------------------------------------
-Converts Vector to Array - removes all methods from the copy
------------------------------------------------------------]]
-function meta:ToArray()
-
-	return { self:Unpack() }
-
-end
-
---[[---------------------------------------------------------
 Returns a copy of a rotated vector. Kind of like v:GetNormalized()
 -----------------------------------------------------------]]
 function meta:GetRotated( ... )
