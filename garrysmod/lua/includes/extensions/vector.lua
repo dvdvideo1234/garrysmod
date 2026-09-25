@@ -293,7 +293,9 @@ signed angle from -math.pi to math.pi when a normal is supplied
 function meta:AngleBetween( vec, nrm )
 
 	if ( nrm == nil ) then
-		return math.acos( self:Dot( vec ) / math.sqrt( self:LengthSqr() * vec:LengthSqr() ) )
+		local arg = self:Dot( vec ) / math.sqrt( self:LengthSqr() * vec:LengthSqr() )
+
+		return math.abs( arg ) <= 1 and math.acos( arg ) or nil
 	end
 
 	return math.atan2( self:Determinant( vec, nrm:GetNormalized() ), self:Dot( vec ) )
