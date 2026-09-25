@@ -158,8 +158,10 @@ function meta:Bisect( vec )
 
 	local na, nb = self:Length(), vec:Length()
 
+	local vec = vec:GetMul( na )
+
 	self:Mul( nb )
-	self:Add( vec:GetMul( na ) )
+	self:Add( vec )
 
 end
 
